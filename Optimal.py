@@ -106,6 +106,12 @@ def apply_css_direction(direction):
 if 'interface_language' not in st.session_state:
     st.session_state.interface_language = "English"
 
+# Cache to keep user logged in
+if 'logged_in' not in st.session_state:
+    st.session_state.logged_in = False
+if 'username' not in st.session_state:
+    st.session_state.username = None
+
 # Login and Signup interface
 def login_signup():
     st.title("BGC ChatBot")
@@ -124,6 +130,7 @@ def login_signup():
                 st.session_state.logged_in = True
                 st.session_state.username = username
                 st.success("Logged in successfully!")
+                st.experimental_rerun()  # Rerun the app to instantly enter the chat interface
             else:
                 st.error("Invalid username or password")
     
@@ -172,6 +179,13 @@ def chat_interface():
             else:
                 st.write(f"**{username}** - No chats yet")
 
+        # Logout button
+        if st.button("Logout"):
+            st.session_state.logged_in = False
+            st.session_state.username = None
+            st.success("Logged out successfully!")
+            st.experimental_rerun()  # Rerun the app to return to the login interface
+
     # Main area for chat interface
     col1, col2 = st.columns([1, 4])
 
@@ -215,6 +229,16 @@ def chat_interface():
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+
+    # Voice input
+    voice_input = speech_to_text(
+        start_prompt="🎤",
+        stop_prompt="⏹️ إيقاف" if st.session_state.interface_language == "العربية" else "⏹️ Stop",
+        language="ar" if st.session_state.interface_language == "العربية" else "en",
+        use_container_width=True,
+        just_once=True,
+        key="mic_button",
+    )
 
     # If voice input is detected, process it
     if voice_input:
@@ -349,9 +373,6 @@ def chat_interface():
                 st.markdown(assistant_response)
 
 # Main app logic
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-
 if st.session_state.logged_in:
     chat_interface()
 else:
