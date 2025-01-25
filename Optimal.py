@@ -44,61 +44,75 @@ def create_user(username, email, password):
     return success
 
 # --- Streamlit UI ---
-st.set_page_config(page_title="Modern Login App", page_icon="🔒", layout="centered")
+st.set_page_config(page_title="Welcome to My App", page_icon="🔒", layout="centered")
 init_db()
 
 # --- State Management ---
 if "logged_in" not in st.session_state:
     st.session_state.logged_in = False
+    st.session_state.page = "home"
     st.session_state.username = ""
 
-# --- Sign In ---
+# --- Welcome Page ---
+def welcome_page():
+    st.image("https://via.placeholder.com/300x100.png?text=Company+Logo", use_column_width=False)
+    st.title("مرحباً بك في تطبيقنا!")
+    st.markdown("### اختر ما تريد:")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("تسجيل الدخول"):
+            st.session_state.page = "sign_in"
+    with col2:
+        if st.button("إنشاء حساب"):
+            st.session_state.page = "sign_up"
+
+# --- Sign In Page ---
 def sign_in():
-    st.title("🔑 Sign In")
+    st.title("🔑 تسجيل الدخول")
     with st.form(key="signin_form"):
-        email = st.text_input("Email Address", placeholder="Enter your email", key="signin_email")
-        password = st.text_input("Password", placeholder="Enter your password", type="password", key="signin_password")
-        submit = st.form_submit_button("Sign In")
+        email = st.text_input("البريد الإلكتروني", placeholder="أدخل بريدك الإلكتروني")
+        password = st.text_input("كلمة المرور", placeholder="أدخل كلمة المرور", type="password")
+        submit = st.form_submit_button("تسجيل الدخول")
 
         if submit:
             user = validate_user(email, password)
             if user:
                 st.session_state.logged_in = True
                 st.session_state.username = user[1]
-                st.success(f"Welcome back, {user[1]}! 🎉")
+                st.success(f"مرحباً بعودتك، {user[1]}! 🎉")
             else:
-                st.error("Invalid email or password. Please try again.")
+                st.error("بيانات الدخول غير صحيحة، حاول مرة أخرى.")
 
-# --- Sign Up ---
+# --- Sign Up Page ---
 def sign_up():
-    st.title("📝 Sign Up")
+    st.title("📝 إنشاء حساب")
     with st.form(key="signup_form"):
-        username = st.text_input("Username", placeholder="Choose a username", key="signup_username")
-        email = st.text_input("Email Address", placeholder="Enter your email", key="signup_email")
-        password = st.text_input("Password", placeholder="Enter a password", type="password", key="signup_password")
-        confirm_password = st.text_input("Confirm Password", placeholder="Confirm your password", type="password", key="signup_confirm_password")
-        submit = st.form_submit_button("Sign Up")
+        username = st.text_input("اسم المستخدم", placeholder="اختر اسم مستخدم")
+        email = st.text_input("البريد الإلكتروني", placeholder="أدخل بريدك الإلكتروني")
+        password = st.text_input("كلمة المرور", placeholder="أدخل كلمة المرور", type="password")
+        confirm_password = st.text_input("تأكيد كلمة المرور", placeholder="أعد كتابة كلمة المرور", type="password")
+        submit = st.form_submit_button("إنشاء الحساب")
 
         if submit:
             if password != confirm_password:
-                st.error("Passwords do not match!")
+                st.error("كلمات المرور غير متطابقة!")
             elif create_user(username, email, password):
-                st.success("Account created successfully! Please sign in.")
+                st.success("تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول.")
             else:
-                st.error("Username or email already exists. Please try again.")
+                st.error("اسم المستخدم أو البريد الإلكتروني موجود مسبقاً. حاول مرة أخرى.")
 
-# --- Main App ---
+# --- Main App Logic ---
 if st.session_state.logged_in:
-    st.title(f"Welcome, {st.session_state.username}! 👋")
-    st.write("You are now logged in.")
-    if st.button("Sign Out"):
+    st.title(f"مرحباً، {st.session_state.username}! 👋")
+    st.write("أنت الآن مسجل الدخول.")
+    if st.button("تسجيل الخروج"):
         st.session_state.logged_in = False
-        st.session_state.username = ""
-        st.info("You have been signed out.")
+        st.session_state.page = "home"
+        st.info("تم تسجيل الخروج.")
 else:
-    st.sidebar.title("Welcome! 👋")
-    page = st.sidebar.radio("Navigation", ["Sign In", "Sign Up"])
-    if page == "Sign In":
+    if st.session_state.page == "home":
+        welcome_page()
+    elif st.session_state.page == "sign_in":
         sign_in()
-    else:
+    elif st.session_state.page == "sign_up":
         sign_up()
