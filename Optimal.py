@@ -1,7 +1,7 @@
 import streamlit as st
+import os
 import sqlite3
 from datetime import datetime
-import os
 from langchain_groq import ChatGroq
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -10,9 +10,6 @@ from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from streamlit_mic_recorder import speech_to_text
-from PyPDF2 import PdfReader
-import pandas as pd
-import numpy as np
 
 # Initialize API key variables
 groq_api_key = "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"
@@ -74,21 +71,13 @@ def get_last_conversation_timestamp(username):
     conn.close()
     return last_timestamp[0] if last_timestamp else None
 
-# Function to extract text from PDF
-def extract_text_from_pdf(pdf_file):
-    reader = PdfReader(pdf_file)
-    text = ""
-    for page in reader.pages:
-        text += page.extract_text()
-    return text
-
 # Initialize the database
 init_db()
 
 # Change the page title and icon
 st.set_page_config(
     page_title="BGC ChatBot",
-    page_icon="🤖",
+    page_icon="BGC Logo Colored.svg",
     layout="wide"
 )
 
@@ -112,6 +101,10 @@ def apply_css_direction(direction):
         """,
         unsafe_allow_html=True,
     )
+
+# Set default interface language
+if 'interface_language' not in st.session_state:
+    st.session_state.interface_language = "English"
 
 # Login and Signup interface
 def login_signup():
@@ -154,7 +147,14 @@ def login_signup():
 def chat_interface():
     # Sidebar configuration
     with st.sidebar:
-        st.title("Previous Chats")
+        # Language selection dropdown
+        st.session_state.interface_language = st.selectbox(
+            "Interface Language",
+            ["English", "العربية"],
+            index=0 if st.session_state.interface_language == "English" else 1
+        )
+
+        st.title("المحادثات السابقة" if st.session_state.interface_language == "العربية" else "Previous Chats")
         
         # Load all users (for demonstration purposes)
         conn = sqlite3.connect('users.db')
@@ -172,14 +172,6 @@ def chat_interface():
             else:
                 st.write(f"**{username}** - No chats yet")
 
-        # PDF Uploader
-        st.markdown("### Upload PDF")
-        uploaded_file = st.file_uploader("Upload a PDF file", type="pdf")
-        if uploaded_file:
-            text = extract_text_from_pdf(uploaded_file)
-            st.session_state.pdf_text = text
-            st.success("PDF uploaded successfully!")
-
     # Main area for chat interface
     col1, col2 = st.columns([1, 4])
 
@@ -187,15 +179,26 @@ def chat_interface():
         st.image("BGC Logo Colored.svg", width=100)
 
     with col2:
-        st.title("BGC ChatBot")
-        st.write("""
-        **Welcome!**  
-        This is the Basrah Gas Company (BGC) ChatBot. You can use this bot to get information about the company and its activities.  
-        **How to use:**  
-        - Type your question in the text box below.  
-        - Or use the microphone button to speak directly.  
-        - You will receive a response based on the available information.  
-        """)
+        if st.session_state.interface_language == "العربية":
+            st.title("محمد الياسين | بوت الدردشة BGC")
+            st.write("""
+            **مرحبًا!**  
+            هذا بوت الدردشة الخاص بشركة غاز البصرة (BGC). يمكنك استخدام هذا البوت للحصول على معلومات حول الشركة وأنشطتها.  
+            **كيفية الاستخدام:**  
+            - اكتب سؤالك في مربع النص أدناه.  
+            - أو استخدم زر المايكروفون للتحدث مباشرة.  
+            - سيتم الرد عليك بناءً على المعلومات المتاحة.  
+            """)
+        else:
+            st.title("Mohammed Al-Yaseen | BGC ChatBot")
+            st.write("""
+            **Welcome!**  
+            This is the Basrah Gas Company (BGC) ChatBot. You can use this bot to get information about the company and its activities.  
+            **How to use:**  
+            - Type your question in the text box below.  
+            - Or use the microphone button to speak directly.  
+            - You will receive a response based on the available information.  
+            """)
 
     # Initialize session state for chat messages if not already done
     if "messages" not in st.session_state:
@@ -247,7 +250,7 @@ def chat_interface():
             st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
             # Display supporting information (page numbers only)
-            with st.expander("Supporting Information"):
+            with st.expander("المعلومات الداعمة" if st.session_state.interface_language == "العربية" else "Supporting Information"):
                 if "context" in response:
                     # Extract unique page numbers from the context
                     page_numbers = set()
@@ -259,14 +262,16 @@ def chat_interface():
                     # Display the page numbers
                     if page_numbers:
                         page_numbers_str = ", ".join(map(str, sorted(page_numbers)))
-                        st.write(f"This answer is according to pages: {page_numbers_str}")
+                        st.write(f"هذه الإجابة وفقًا للصفحات: {page_numbers_str}" if st.session_state.interface_language == "العربية" else f"This answer is according to pages: {page_numbers_str}")
                     else:
-                        st.write("No valid page numbers available in the context.")
+                        st.write("لا توجد أرقام صفحات صالحة في السياق." if st.session_state.interface_language == "العربية" else "No valid page numbers available in the context.")
                 else:
-                    st.write("No context available.")
+                    st.write("لا يوجد سياق متاح." if st.session_state.interface_language == "العربية" else "No context available.")
         else:
             # Prompt user to ensure embeddings are loaded
-            assistant_response = "Embeddings not loaded. Please check if the embeddings path is correct."
+            assistant_response = (
+                "لم يتم تحميل التضميدات. يرجى التحقق مما إذا كان مسار التضميدات صحيحًا." if st.session_state.interface_language == "العربية" else "Embeddings not loaded. Please check if the embeddings path is correct."
+            )
             st.session_state.messages.append(
                 {"role": "assistant", "content": assistant_response}
             )
@@ -275,7 +280,10 @@ def chat_interface():
                 st.markdown(assistant_response)
 
     # Text input field
-    human_input = st.chat_input("Type your question here...")
+    if st.session_state.interface_language == "العربية":
+        human_input = st.chat_input("اكتب سؤالك هنا...")
+    else:
+        human_input = st.chat_input("Type your question here...")
 
     # If text input is detected, process it
     if human_input:
@@ -311,7 +319,7 @@ def chat_interface():
             st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
             # Display supporting information (page numbers only)
-            with st.expander("Page References"):
+            with st.expander("مراجع الصفحات" if st.session_state.interface_language == "العربية" else "Page References"):
                 if "context" in response:
                     # Extract unique page numbers from the context
                     page_numbers = set()
@@ -323,14 +331,16 @@ def chat_interface():
                     # Display the page numbers
                     if page_numbers:
                         page_numbers_str = ", ".join(map(str, sorted(page_numbers)))
-                        st.write(f"This answer is according to pages: {page_numbers_str}")
+                        st.write(f"هذه الإجابة وفقًا للصفحات: {page_numbers_str}" if st.session_state.interface_language == "العربية" else f"This answer is according to pages: {page_numbers_str}")
                     else:
-                        st.write("No valid page numbers available in the context.")
+                        st.write("لا توجد أرقام صفحات صالحة في السياق." if st.session_state.interface_language == "العربية" else "No valid page numbers available in the context.")
                 else:
-                    st.write("No context available.")
+                    st.write("لا يوجد سياق متاح." if st.session_state.interface_language == "العربية" else "No context available.")
         else:
             # Prompt user to ensure embeddings are loaded
-            assistant_response = "Embeddings not loaded. Please check if the embeddings path is correct."
+            assistant_response = (
+                "لم يتم تحميل التضميدات. يرجى التحقق مما إذا كان مسار التضميدات صحيحًا." if st.session_state.interface_language == "العربية" else "Embeddings not loaded. Please check if the embeddings path is correct."
+            )
             st.session_state.messages.append(
                 {"role": "assistant", "content": assistant_response}
             )
