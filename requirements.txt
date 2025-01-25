@@ -1,5 +1,4 @@
 streamlit
-sqlite3
 faiss-cpu
 groq
 langchain-groq
