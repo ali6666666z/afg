@@ -1,118 +1,135 @@
 import streamlit as st
 import sqlite3
 from datetime import datetime
-import hashlib
 
-# --- Initialize SQLite Database ---
+# Initialize database
 def init_db():
-    conn = sqlite3.connect("users.db")
+    conn = sqlite3.connect("chatgpt_clone.db")
     cursor = conn.cursor()
-    cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE NOT NULL,
-        email TEXT UNIQUE NOT NULL,
-        password TEXT NOT NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
+
+    # Create users table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password TEXT NOT NULL
+        )
+    ''')
+
+    # Create chat history table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_history (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            message TEXT NOT NULL,
+            role TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            FOREIGN KEY (user_id) REFERENCES users (id)
+        )
+    ''')
+
     conn.commit()
     conn.close()
 
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
+# Register user
+def register_user(username, password):
+    try:
+        conn = sqlite3.connect("chatgpt_clone.db")
+        cursor = conn.cursor()
+        cursor.execute("INSERT INTO users (username, password) VALUES (?, ?)", (username, password))
+        conn.commit()
+        conn.close()
+        return True
+    except sqlite3.IntegrityError:
+        return False
 
-def validate_user(email, password):
-    conn = sqlite3.connect("users.db")
+# Authenticate user
+def authenticate_user(username, password):
+    conn = sqlite3.connect("chatgpt_clone.db")
     cursor = conn.cursor()
-    hashed_password = hash_password(password)
-    cursor.execute("SELECT * FROM users WHERE email = ? AND password = ?", (email, hashed_password))
+    cursor.execute("SELECT id FROM users WHERE username = ? AND password = ?", (username, password))
     user = cursor.fetchone()
     conn.close()
-    return user
+    return user[0] if user else None
 
-def create_user(username, email, password):
-    conn = sqlite3.connect("users.db")
+# Save chat message
+def save_message(user_id, message, role):
+    conn = sqlite3.connect("chatgpt_clone.db")
     cursor = conn.cursor()
-    hashed_password = hash_password(password)
-    try:
-        cursor.execute("INSERT INTO users (username, email, password) VALUES (?, ?, ?)", 
-                       (username, email, hashed_password))
-        conn.commit()
-        success = True
-    except sqlite3.IntegrityError:
-        success = False
+    cursor.execute(
+        "INSERT INTO chat_history (user_id, message, role, timestamp) VALUES (?, ?, ?, ?)",
+        (user_id, message, role, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+    )
+    conn.commit()
     conn.close()
-    return success
 
-# --- Streamlit UI ---
-st.set_page_config(page_title="Welcome to My App", page_icon="🔒", layout="centered")
+# Load chat history
+def load_chat_history(user_id):
+    conn = sqlite3.connect("chatgpt_clone.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT message, role, timestamp FROM chat_history WHERE user_id = ? ORDER BY id ASC", (user_id,))
+    history = cursor.fetchall()
+    conn.close()
+    return history
+
+# Initialize database
 init_db()
 
-# --- State Management ---
-if "logged_in" not in st.session_state:
-    st.session_state.logged_in = False
-    st.session_state.page = "home"
-    st.session_state.username = ""
+# Streamlit app
+st.set_page_config(page_title="ChatGPT Clone", page_icon="🤖", layout="wide")
 
-# --- Welcome Page ---
-def welcome_page():
-    st.image("https://via.placeholder.com/300x100.png?text=Company+Logo", use_column_width=False)
-    st.title("مرحباً بك في تطبيقنا!")
-    st.markdown("### اختر ما تريد:")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("تسجيل الدخول"):
-            st.session_state.page = "sign_in"
-    with col2:
-        if st.button("إنشاء حساب"):
-            st.session_state.page = "sign_up"
+if "user_id" not in st.session_state:
+    st.session_state.user_id = None
 
-# --- Sign In Page ---
-def sign_in():
-    st.title("🔑 تسجيل الدخول")
-    with st.form(key="signin_form"):
-        email = st.text_input("البريد الإلكتروني", placeholder="أدخل بريدك الإلكتروني")
-        password = st.text_input("كلمة المرور", placeholder="أدخل كلمة المرور", type="password")
-        submit = st.form_submit_button("تسجيل الدخول")
+if st.session_state.user_id is None:
+    st.title("Welcome to ChatGPT Clone")
+    
+    auth_choice = st.radio("Choose an option:", ["Login", "Sign Up"])
 
-        if submit:
-            user = validate_user(email, password)
-            if user:
-                st.session_state.logged_in = True
-                st.session_state.username = user[1]
-                st.success(f"مرحباً بعودتك، {user[1]}! 🎉")
+    if auth_choice == "Login":
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        if st.button("Login"):
+            user_id = authenticate_user(username, password)
+            if user_id:
+                st.session_state.user_id = user_id
+                st.success("Logged in successfully!")
+                st.experimental_rerun()
             else:
-                st.error("بيانات الدخول غير صحيحة، حاول مرة أخرى.")
-
-# --- Sign Up Page ---
-def sign_up():
-    st.title("📝 إنشاء حساب")
-    with st.form(key="signup_form"):
-        username = st.text_input("اسم المستخدم", placeholder="اختر اسم مستخدم")
-        email = st.text_input("البريد الإلكتروني", placeholder="أدخل بريدك الإلكتروني")
-        password = st.text_input("كلمة المرور", placeholder="أدخل كلمة المرور", type="password")
-        confirm_password = st.text_input("تأكيد كلمة المرور", placeholder="أعد كتابة كلمة المرور", type="password")
-        submit = st.form_submit_button("إنشاء الحساب")
-
-        if submit:
-            if password != confirm_password:
-                st.error("كلمات المرور غير متطابقة!")
-            elif create_user(username, email, password):
-                st.success("تم إنشاء الحساب بنجاح! يمكنك الآن تسجيل الدخول.")
+                st.error("Invalid username or password.")
+    elif auth_choice == "Sign Up":
+        username = st.text_input("Choose a username")
+        password = st.text_input("Choose a password", type="password")
+        if st.button("Sign Up"):
+            if register_user(username, password):
+                st.success("Account created successfully! Please log in.")
             else:
-                st.error("اسم المستخدم أو البريد الإلكتروني موجود مسبقاً. حاول مرة أخرى.")
-
-# --- Main App Logic ---
-if st.session_state.logged_in:
-    st.title(f"مرحباً، {st.session_state.username}! 👋")
-    st.write("أنت الآن مسجل الدخول.")
-    if st.button("تسجيل الخروج"):
-        st.session_state.logged_in = False
-        st.session_state.page = "home"
-        st.info("تم تسجيل الخروج.")
+                st.error("Username already taken. Please choose another.")
 else:
-    if st.session_state.page == "home":
-        welcome_page()
-    elif st.session_state.page == "sign_in":
-        sign_in()
-    elif st.session_state.page == "sign_up":
-        sign_up()
+    st.title("ChatGPT Clone")
+    st.sidebar.button("Log Out", on_click=lambda: st.session_state.clear())
+    st.sidebar.button("New Chat", on_click=lambda: st.session_state.pop("messages", None))
+
+    if "messages" not in st.session_state:
+        st.session_state.messages = []
+
+    # Load chat history
+    history = load_chat_history(st.session_state.user_id)
+    for message, role, timestamp in history:
+        if role == "user":
+            st.chat_message("user").markdown(f"{message} ({timestamp})")
+        elif role == "assistant":
+            st.chat_message("assistant").markdown(f"{message} ({timestamp})")
+
+    # Chat input
+    user_message = st.chat_input("Type your message...")
+    if user_message:
+        st.session_state.messages.append({"role": "user", "content": user_message})
+        save_message(st.session_state.user_id, user_message, "user")
+        st.chat_message("user").markdown(user_message)
+
+        # Placeholder response from the assistant
+        assistant_message = "This is a placeholder response."
+        st.session_state.messages.append({"role": "assistant", "content": assistant_message})
+        save_message(st.session_state.user_id, assistant_message, "assistant")
+        st.chat_message("assistant").markdown(assistant_message)
