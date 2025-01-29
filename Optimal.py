@@ -462,6 +462,16 @@ def process_user_input(user_input, is_first_message=False):
     except Exception as e:
         st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
 
+# عرض سجل المحادثة
+for message in st.session_state.messages:
+    if message["role"] == "assistant" and "references" in message:
+        display_chat_message(message, with_refs=True)
+    else:
+        display_chat_message(message)
+
+# حقل إدخال النص
+human_input = st.chat_input(UI_TEXTS[interface_language]['input_placeholder'])
+
 # معالجة الإدخال النصي
 if human_input:
     user_message = {"role": "user", "content": human_input}
