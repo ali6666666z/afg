@@ -59,7 +59,7 @@ UI_TEXTS = {
         "new_chat": "محادثة جديدة",
         "today": "اليوم",
         "yesterday": "أمس",
-        "previous_chats": "المحادثات السابقة",
+        "previous_chats": "سجل المحادثات",
         "welcome_message": """
         **مرحبًا!**  
         هذا بوت الدردشة الخاص بشركة غاز البصرة (BGC). يمكنك استخدام هذا البوت للحصول على معلومات حول الشركة وأنشطتها.  
@@ -81,7 +81,7 @@ UI_TEXTS = {
         "new_chat": "New Chat",
         "today": "Today",
         "yesterday": "Yesterday",
-        "previous_chats": "Previous Chats",
+        "previous_chats": "Chat History",
         "welcome_message": """
         **Welcome!**  
         This is the Basrah Gas Company (BGC) ChatBot. You can use this bot to get information about the company and its activities.  
