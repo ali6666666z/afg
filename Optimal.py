@@ -60,6 +60,9 @@ UI_TEXTS = {
         "today": "اليوم",
         "yesterday": "أمس",
         "previous_chats": "المحادثات السابقة",
+        "chat_options": "خيارات المحادثة",
+        "delete_chat": "حذف المحادثة",
+        "rename_chat": "إعادة تسمية المحادثة",
         "welcome_message": """
         **مرحبًا!**  
         هذا بوت الدردشة الخاص بشركة غاز البصرة (BGC). يمكنك استخدام هذا البوت للحصول على معلومات حول الشركة وأنشطتها.  
@@ -82,6 +85,9 @@ UI_TEXTS = {
         "today": "Today",
         "yesterday": "Yesterday",
         "previous_chats": "Previous Chats",
+        "chat_options": "Chat Options",
+        "delete_chat": "Delete Chat",
+        "rename_chat": "Rename Chat",
         "welcome_message": """
         **Welcome!**  
         This is the Basrah Gas Company (BGC) ChatBot. You can use this bot to get information about the company and its activities.  
@@ -92,6 +98,100 @@ UI_TEXTS = {
         """
     }
 }
+
+# إضافة CSS مخصص
+st.markdown("""
+<style>
+    /* تنسيق الشريط الجانبي */
+    .css-1d391kg {
+        background-color: #202123;
+    }
+    
+    /* تنسيق زر المحادثة الجديدة */
+    .new-chat-button {
+        width: 100%;
+        padding: 10px;
+        margin: 10px 0;
+        background-color: #343541;
+        border: 1px solid #565869;
+        border-radius: 5px;
+        color: white;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    .new-chat-button:hover {
+        background-color: #40414f;
+    }
+    
+    /* تنسيق قائمة المحادثات */
+    .chat-list {
+        margin-top: 20px;
+    }
+    .chat-item {
+        padding: 10px;
+        margin: 5px 0;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    .chat-item:hover {
+        background-color: #2a2b32;
+    }
+    .chat-item.active {
+        background-color: #343541;
+    }
+    
+    /* تنسيق خيارات المحادثة */
+    .chat-options {
+        position: absolute;
+        right: 10px;
+        display: none;
+    }
+    .chat-item:hover .chat-options {
+        display: block;
+    }
+    
+    /* تنسيق منطقة المحادثة */
+    .chat-area {
+        max-width: 800px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    /* تنسيق الرسائل */
+    .message {
+        padding: 20px;
+        margin: 10px 0;
+        border-radius: 5px;
+    }
+    .user-message {
+        background-color: #343541;
+    }
+    .assistant-message {
+        background-color: #444654;
+    }
+    
+    /* تنسيق حقل الإدخال */
+    .input-area {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        padding: 20px;
+        background-color: #343541;
+        border-top: 1px solid #565869;
+    }
+    
+    /* إخفاء عناصر Streamlit الافتراضية */
+    #MainMenu, header, footer {
+        display: none !important;
+    }
+    
+    .main > div {
+        padding-bottom: 100px;
+    }
+</style>
+""", unsafe_allow_html=True)
 
 # PDF Search and Screenshot Class
 class PDFSearchAndDisplay:
@@ -294,14 +394,20 @@ def update_chat_topic(message):
 
 # Sidebar for chat history
 with st.sidebar:
-    # New Chat button
-    if st.button(UI_TEXTS[interface_language]['new_chat'], use_container_width=True):
+    # New Chat button with custom styling
+    st.markdown(f"""
+        <button class="new-chat-button" onclick="document.querySelector('[data-testid="baseButton-secondary"]').click()">
+            {UI_TEXTS[interface_language]['new_chat']}
+        </button>
+    """, unsafe_allow_html=True)
+    
+    if st.button(UI_TEXTS[interface_language]['new_chat'], key="actual_new_chat_button", use_container_width=True):
         create_new_chat()
-        st.rerun()  # استخدام st.rerun بدلاً من experimental_rerun
+        st.rerun()
     
     st.markdown("---")
     
-    # Display chat history
+    # Display chat history with custom styling
     st.markdown(f"### {UI_TEXTS[interface_language]['previous_chats']}")
     
     # Group chats by date
@@ -315,17 +421,75 @@ with st.sidebar:
     # Display chats grouped by date
     for date in sorted(chats_by_date.keys(), reverse=True):
         chats = chats_by_date[date]
+        
+        # Add date header
+        today = datetime.now().date()
+        if date == today:
+            date_header = UI_TEXTS[interface_language]['today']
+        elif date == today - timedelta(days=1):
+            date_header = UI_TEXTS[interface_language]['yesterday']
+        else:
+            date_header = date.strftime('%Y-%m-%d')
+        st.markdown(f"#### {date_header}")
+        
+        # Display chat items
         for chat_id, chat_data in sorted(chats, key=lambda x: x[1]['timestamp'], reverse=True):
-            if st.sidebar.button(
-                format_chat_title(chat_data),
-                key=f"chat_{chat_id}",
-                use_container_width=True
-            ):
-                load_chat(chat_id)
+            col1, col2 = st.columns([4, 1])
+            
+            with col1:
+                if st.button(
+                    format_chat_title(chat_data),
+                    key=f"chat_{chat_id}",
+                    use_container_width=True
+                ):
+                    load_chat(chat_id)
+            
+            # Chat options
+            with col2:
+                with st.expander("⋮"):
+                    if st.button(UI_TEXTS[interface_language]['rename_chat'], key=f"rename_{chat_id}"):
+                        new_topic = st.text_input("New topic:", key=f"new_topic_{chat_id}")
+                        if new_topic:
+                            rename_chat(chat_id, new_topic)
+                    
+                    if st.button(UI_TEXTS[interface_language]['delete_chat'], key=f"delete_{chat_id}"):
+                        delete_chat(chat_id)
 
-# Create new chat if no chat is selected
-if st.session_state.current_chat_id is None:
-    create_new_chat()
+def delete_chat(chat_id):
+    """حذف محادثة محددة"""
+    if chat_id in st.session_state.chat_history:
+        del st.session_state.chat_history[chat_id]
+        if st.session_state.current_chat_id == chat_id:
+            create_new_chat()
+        st.rerun()
+
+def rename_chat(chat_id, new_topic):
+    """إعادة تسمية محادثة"""
+    if chat_id in st.session_state.chat_history:
+        st.session_state.chat_history[chat_id]['topic'] = new_topic
+        st.rerun()
+
+# Main chat area
+st.markdown('<div class="chat-area">', unsafe_allow_html=True)
+
+# Display messages
+for message in st.session_state.messages:
+    message_class = "user-message" if message["role"] == "user" else "assistant-message"
+    st.markdown(f'<div class="message {message_class}">{message["content"]}</div>', unsafe_allow_html=True)
+
+st.markdown('</div>', unsafe_allow_html=True)
+
+# Input area
+st.markdown('<div class="input-area">', unsafe_allow_html=True)
+cols = st.columns([6, 1])
+
+with cols[0]:
+    human_input = st.text_input("", placeholder=UI_TEXTS[interface_language]['input_placeholder'], key="chat_input")
+
+with cols[1]:
+    voice_input = st_mic_recorder()
+
+st.markdown('</div>', unsafe_allow_html=True)
 
 # Initialize memory if not already done
 if "memory" not in st.session_state:
@@ -507,15 +671,9 @@ def display_response_with_references(response, assistant_response):
             "content": assistant_response
         })
 
-# عرض سجل المحادثة
-for message in st.session_state.messages:
-    if message["role"] == "assistant" and "references" in message:
-        display_chat_message(message, with_refs=True)
-    else:
-        display_chat_message(message)
-
-# حقل إدخال النص
-human_input = st.chat_input(UI_TEXTS[interface_language]['input_placeholder'])
+# Create new chat if no chat is selected
+if st.session_state.current_chat_id is None:
+    create_new_chat()
 
 # معالجة الإدخال النصي
 if human_input:
