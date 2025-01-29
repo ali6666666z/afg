@@ -470,6 +470,49 @@ def process_user_input(user_input, is_first_message=False):
     except Exception as e:
         st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
 
+def display_references(refs):
+    """عرض المراجع والصور من ملفات PDF"""
+    if refs and isinstance(refs, dict) and "references" in refs:
+        page_info = []
+        for ref in refs["references"]:
+            if "page" in ref and ref["page"] is not None:
+                page_info.append(ref["page"])
+
+        if page_info:
+            with st.expander(UI_TEXTS[interface_language]["page_references"]):
+                cols = st.columns(2)
+                for idx, page_num in enumerate(sorted(set(page_info))):
+                    col_idx = idx % 2
+                    with cols[col_idx]:
+                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
+                        if screenshots:
+                            st.image(screenshots[0], use_container_width=True)
+                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
+
+def display_chat_message(message, with_refs=False):
+    """عرض رسالة المحادثة"""
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if with_refs and "references" in message:
+            display_references(message)
+
+def display_response_with_references(response, answer):
+    """عرض الإجابة مع المراجع"""
+    if not any(phrase in answer.lower() for phrase in negative_phrases):
+        # إضافة المراجع إلى الرسالة
+        message = {
+            "role": "assistant",
+            "content": answer,
+            "references": response
+        }
+        display_chat_message(message, with_refs=True)
+    else:
+        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
+        display_chat_message({
+            "role": "assistant",
+            "content": answer
+        })
+
 # عرض سجل المحادثة
 for message in st.session_state.messages:
     if message["role"] == "assistant" and "references" in message:
@@ -523,46 +566,3 @@ if voice_input:
 # Create new chat if no chat is selected
 if st.session_state.current_chat_id is None:
     create_new_chat()
-
-def display_references(refs):
-    """عرض المراجع والصور من ملفات PDF"""
-    if refs and isinstance(refs, dict) and "references" in refs:
-        page_info = []
-        for ref in refs["references"]:
-            if "page" in ref and ref["page"] is not None:
-                page_info.append(ref["page"])
-
-        if page_info:
-            with st.expander(UI_TEXTS[interface_language]["page_references"]):
-                cols = st.columns(2)
-                for idx, page_num in enumerate(sorted(set(page_info))):
-                    col_idx = idx % 2
-                    with cols[col_idx]:
-                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
-                        if screenshots:
-                            st.image(screenshots[0], use_container_width=True)
-                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
-
-def display_chat_message(message, with_refs=False):
-    """عرض رسالة المحادثة"""
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if with_refs and "references" in message:
-            display_references(message)
-
-def display_response_with_references(response, answer):
-    """عرض الإجابة مع المراجع"""
-    if not any(phrase in answer.lower() for phrase in negative_phrases):
-        # إضافة المراجع إلى الرسالة
-        message = {
-            "role": "assistant",
-            "content": answer,
-            "references": response
-        }
-        display_chat_message(message, with_refs=True)
-    else:
-        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
-        display_chat_message({
-            "role": "assistant",
-            "content": answer
-        })
