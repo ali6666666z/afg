@@ -154,23 +154,35 @@ with st.sidebar:
         # تعريف القالب الأساسي للدردشة
         def create_chat_prompt():
             return PromptTemplate(
-                template="""أنت مساعد مفيد لشركة غاز البصرة (BGC). مهمتك هي الإجابة على الأسئلة بناءً على السياق المقدم حول BGC. اتبع هذه القواعد بدقة:
+                template="""أنت مساعد خبير لشركة غاز البصرة (BGC). مهمتك هي تقديم إجابات دقيقة ومفصلة بناءً على المعلومات المتوفرة. اتبع هذه التعليمات بدقة:
 
-                1. قدم إجابات دقيقة ومباشرة
-                2. استخدم فقط المعلومات من السياق المقدم
-                3. إذا لم تكن متأكداً، قل ذلك بصراحة
-                4. حافظ على لغة مهنية ومحترفة
+1. تحليل السياق:
+   - اقرأ السياق المقدم بعناية
+   - حدد المعلومات الأكثر صلة بالسؤال
+   - تأكد من فهم جميع التفاصيل المهمة
 
-                السياق المقدم:
-                {context}
+2. صياغة الإجابة:
+   - ابدأ بالنقاط الأكثر أهمية وصلة بالسؤال
+   - قدم معلومات دقيقة ومثبتة من السياق
+   - نظم الإجابة بشكل منطقي ومتسلسل
+   - استخدم لغة واضحة ومهنية
 
-                السؤال: {input}
+3. التأكد من الجودة:
+   - تحقق من أن الإجابة شاملة وتغطي جميع جوانب السؤال
+   - تأكد من عدم وجود معلومات متناقضة
+   - أضف تفاصيل داعمة عند الحاجة
 
-                تذكر أن تقدم إجابة:
-                1. دقيقة ومستندة إلى الوثائق
-                2. مباشرة وواضحة
-                3. مهنية ومنظمة
-                """,
+السياق المقدم:
+{context}
+
+السؤال: {input}
+
+قم بصياغة إجابة:
+1. مباشرة وشاملة
+2. مدعومة بالأدلة من السياق
+3. منظمة ومهنية
+4. سهلة الفهم والتطبيق
+""",
                 input_variables=["context", "input"]
             )
 
@@ -349,30 +361,73 @@ def extract_complete_sentences(text, max_length=200):
             
     return ' '.join(complete_text)
 
-def get_relevant_context(retriever, query, k=3):
+def get_relevant_context(retriever, query, k=5):
     """الحصول على السياق الأكثر صلة وتنظيمه"""
-    # استرجاع المستندات ذات الصلة
-    docs = retriever.get_relevant_documents(query)
+    # استرجاع المستندات ذات الصلة مع زيادة عدد النتائج
+    docs = retriever.get_relevant_documents(
+        query,
+        search_kwargs={"k": k * 2}  # مضاعفة عدد النتائج للحصول على سياق أفضل
+    )
     
     # تنظيم وتنقية السياق
     organized_context = []
-    for doc in docs[:k]:  # استخدام أفضل k مستندات فقط
-        text = clean_text(doc.page_content)
-        complete_text = extract_complete_sentences(text)
-        if complete_text:
-            # إنشاء وثيقة جديدة مع النص المنظم
-            organized_doc = Document(
-                page_content=complete_text,
-                metadata={"page": doc.metadata.get("page", "unknown")}
-            )
-            organized_context.append(organized_doc)
+    total_length = 0
+    max_length = 1000  # زيادة الحد الأقصى للنص
     
-    return organized_context
+    for doc in docs:
+        text = clean_text(doc.page_content)
+        complete_text = extract_complete_sentences(text, max_length=300)  # زيادة طول الجمل
+        
+        if complete_text and not any(
+            similar_text(complete_text, existing.page_content) > 0.7
+            for existing in organized_context
+        ):
+            # التحقق من عدم تكرار نفس المعلومات
+            if total_length + len(complete_text) <= max_length:
+                organized_doc = Document(
+                    page_content=complete_text,
+                    metadata={"page": doc.metadata.get("page", "unknown")}
+                )
+                organized_context.append(organized_doc)
+                total_length += len(complete_text)
+    
+    # ترتيب السياق حسب الأهمية
+    organized_context.sort(
+        key=lambda x: calculate_relevance_score(x.page_content, query),
+        reverse=True
+    )
+    
+    return organized_context[:k]
+
+def similar_text(text1, text2):
+    """حساب مدى تشابه النصوص"""
+    words1 = set(text1.lower().split())
+    words2 = set(text2.lower().split())
+    intersection = words1.intersection(words2)
+    union = words1.union(words2)
+    return len(intersection) / len(union) if union else 0
+
+def calculate_relevance_score(text, query):
+    """حساب درجة أهمية النص بالنسبة للسؤال"""
+    # تحويل النص والسؤال إلى كلمات
+    text_words = set(text.lower().split())
+    query_words = set(query.lower().split())
+    
+    # حساب عدد الكلمات المشتركة
+    common_words = len(text_words.intersection(query_words))
+    
+    # حساب طول النص (عقوبة للنصوص الطويلة جداً)
+    length_penalty = 1.0 / (1.0 + len(text_words) / 100.0)
+    
+    # حساب الدرجة النهائية
+    score = common_words * length_penalty
+    
+    return score
 
 def process_input(input_text, retriever, llm, memory):
-    """معالجة إدخال المستخدم مع تحسين جودة الإجابات والسياق"""
+    """معالجة إدخال المستخدم مع تحسين جودة الإجابات"""
     try:
-        # الحصول على السياق المنظم
+        # الحصول على السياق المحسن
         context = get_relevant_context(retriever, input_text)
         
         # إنشاء القالب والسلسلة
@@ -382,9 +437,20 @@ def process_input(input_text, retriever, llm, memory):
             combine_docs_chain=create_custom_chain(llm, prompt)
         )
         
+        # إضافة تعليمات إضافية للنموذج
+        enhanced_input = f"""
+        السؤال: {input_text}
+        
+        ملاحظات مهمة:
+        1. قدم إجابة شاملة ودقيقة
+        2. استخدم أهم المعلومات من السياق
+        3. نظم الإجابة بشكل منطقي
+        4. اذكر التفاصيل المهمة
+        """
+        
         # الحصول على الإجابة
         response = chain.invoke({
-            "input": input_text,
+            "input": enhanced_input,
             "history": memory.load_memory_variables({})["history"]
         })
         
