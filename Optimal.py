@@ -8,6 +8,8 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.vectorstores.faiss import FAISS
 from streamlit_mic_recorder import speech_to_text
 from langchain.memory import ConversationBufferMemory
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain.chains import create_retrieval_chain
 
 # تهيئة مفاتيح API
 groq_api_key = "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"
@@ -40,27 +42,79 @@ st.set_page_config(
 # إضافة CSS مخصص
 st.markdown("""
     <style>
-        /* الألوان الرئيسية لشركة غاز البصرة */
+        /* الألوان الرئيسية */
         :root {
             --bgc-blue: #0066B3;
             --bgc-light-blue: #00A0DC;
             --bgc-dark: #1A1A1A;
             --bgc-light: #FFFFFF;
+            --bgc-gray: #F7F7F8;
+            --bgc-border: #E5E5E5;
         }
 
-        /* تنسيق العنوان الرئيسي */
-        .main-header {
-            background: linear-gradient(90deg, var(--bgc-blue) 0%, var(--bgc-light-blue) 100%);
-            padding: 2rem;
-            border-radius: 10px;
-            margin-bottom: 2rem;
-            color: white;
-            text-align: center;
+        /* تنسيق الصفحة الرئيسية */
+        .stApp {
+            background-color: var(--bgc-gray);
         }
 
         /* تنسيق الشريط الجانبي */
         .css-1d391kg {
             background-color: var(--bgc-dark);
+        }
+
+        /* تنسيق محادثات ChatGPT */
+        .chat-container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .message-container {
+            display: flex;
+            padding: 1.5rem;
+            margin: 0.5rem 0;
+            border-bottom: 1px solid var(--bgc-border);
+        }
+
+        .user-message {
+            background-color: white;
+        }
+
+        .assistant-message {
+            background-color: var(--bgc-gray);
+        }
+
+        .message-avatar {
+            width: 30px;
+            height: 30px;
+            margin-right: 1rem;
+            border-radius: 2px;
+        }
+
+        .message-content {
+            flex: 1;
+            line-height: 1.6;
+        }
+
+        /* تنسيق مربع الإدخال */
+        .input-container {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: white;
+            padding: 1rem;
+            border-top: 1px solid var(--bgc-border);
+            z-index: 1000;
+        }
+
+        .stChatInput {
+            max-width: 800px;
+            margin: 0 auto;
+            border: 1px solid var(--bgc-border);
+            border-radius: 10px;
+            padding: 1rem;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
         }
 
         /* تنسيق الأزرار */
@@ -74,21 +128,6 @@ st.markdown("""
         }
         .stButton>button:hover {
             background-color: var(--bgc-light-blue);
-        }
-
-        /* تنسيق مربع الدردشة */
-        .stChatMessage {
-            border-radius: 10px;
-            margin: 0.5rem 0;
-            padding: 1rem;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
-
-        /* تنسيق مربع الإدخال */
-        .stChatInput {
-            border: 2px solid var(--bgc-blue);
-            border-radius: 5px;
-            padding: 0.5rem;
         }
 
         /* تنسيق الروابط */
@@ -107,18 +146,6 @@ st.markdown("""
             border-radius: 10px;
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             margin: 1rem 0;
-        }
-
-        /* تنسيق الأيقونات */
-        .icon-container {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 50px;
-            height: 50px;
-            background-color: var(--bgc-blue);
-            border-radius: 50%;
-            margin: 0 auto 1rem auto;
         }
     </style>
 """, unsafe_allow_html=True)
@@ -167,8 +194,17 @@ def render_sidebar():
 
 # تحديث عرض الرسائل
 def display_message(message):
-    with st.chat_message(message["role"]):
-        st.markdown(f'<div class="message-content">{message["content"]}</div>', unsafe_allow_html=True)
+    role_class = "user-message" if message["role"] == "user" else "assistant-message"
+    avatar_src = "user-avatar.png" if message["role"] == "user" else "BGC Logo Colored.svg"
+    
+    st.markdown(f"""
+        <div class="message-container {role_class}">
+            <img src="{avatar_src}" class="message-avatar" alt="{message['role']}">
+            <div class="message-content">
+                {message["content"]}
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
 # تعريف كلاس PDFSearchAndDisplay
 class PDFSearchAndDisplay:
@@ -423,14 +459,12 @@ def display_response_with_references(response, assistant_response):
 
 # Display chat history
 for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+    display_message(message)
 
 # If voice input is detected, process it
 if voice_input:
     st.session_state.messages.append({"role": "user", "content": voice_input})
-    with st.chat_message("user"):
-        st.markdown(voice_input)
+    display_message({"role": "user", "content": voice_input})
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         # Create and configure the document chain and retriever
@@ -463,8 +497,7 @@ else:
 # If text input is detected, process it
 if human_input:
     st.session_state.messages.append({"role": "user", "content": human_input})
-    with st.chat_message("user"):
-        st.markdown(human_input)
+    display_message({"role": "user", "content": human_input})
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         # Create and configure the document chain and retriever
@@ -622,34 +655,38 @@ def toggle_dark_mode():
 
 # تحديث الدالة الرئيسية
 def main():
-    render_main_header()
-    render_sidebar()
-    
-    # عرض المحتوى الرئيسي
-    if "is_authenticated" not in st.session_state or not st.session_state.is_authenticated:
+    if not st.session_state.is_authenticated:
         render_auth_interface()
     else:
-        # عرض واجهة الدردشة
-        cols = st.columns([2, 1])
-        with cols[0]:
-            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-            for message in st.session_state.messages:
-                display_message(message)
-            st.markdown('</div>', unsafe_allow_html=True)
+        render_main_header()
         
-        with cols[1]:
-            st.markdown('<div class="info-card">', unsafe_allow_html=True)
-            if st.session_state.interface_language == "العربية":
-                st.markdown("### معلومات سريعة")
-                st.markdown("- اطرح أسئلتك باللغة العربية أو الإنجليزية")
-                st.markdown("- استخدم الميكروفون للإدخال الصوتي")
-                st.markdown("- اضغط على زر المحادثة الجديدة لبدء محادثة جديدة")
-            else:
-                st.markdown("### Quick Info")
-                st.markdown("- Ask questions in Arabic or English")
-                st.markdown("- Use the microphone for voice input")
-                st.markdown("- Click New Chat to start a fresh conversation")
-            st.markdown('</div>', unsafe_allow_html=True)
+        # عرض المحادثة
+        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+        for message in st.session_state.messages:
+            display_message(message)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # مربع الإدخال
+        st.markdown('<div class="input-container">', unsafe_allow_html=True)
+        human_input = st.chat_input(
+            "اكتب سؤالك هنا..." if st.session_state.interface_language == "العربية" else "Type your question here..."
+        )
+        
+        # زر المايكروفون
+        col1, col2 = st.columns([6, 1])
+        with col2:
+            voice_input = speech_to_text(
+                "🎤",
+                "⏹️",
+                language="ar" if st.session_state.interface_language == "العربية" else "en",
+                just_once=True,
+                key="voice_input"
+            )
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # معالجة المدخلات
+        if human_input or voice_input:
+            process_input(human_input or voice_input)
 
 if __name__ == "__main__":
     main()
