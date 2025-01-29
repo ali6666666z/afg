@@ -430,177 +430,77 @@ def get_relevant_context(retriever, query, k=3):
     
     return organized_context
 
-def process_input(input_text, retriever, llm, memory):
+def process_user_input(user_input, is_first_message=False):
     try:
-        # الحصول على السياق المنظم
-        context = get_relevant_context(retriever, input_text)
+        # تحضير السياق من الملفات PDF
+        context = get_relevant_context(user_input)
         
-        # إنشاء القالب والسلسلة
-        prompt = create_chat_prompt()
-        chain = create_retrieval_chain(
-            retriever=retriever,
-            combine_docs_chain=create_custom_chain(llm, prompt)
+        # إنشاء الإجابة باستخدام OpenAI
+        response = create_chat_response(
+            user_input,
+            context,
+            st.session_state.memory,
+            interface_language
         )
         
-        # الحصول على الإجابة
-        response = chain.invoke({
-            "input": input_text,
-            "history": memory.load_memory_variables({})["history"]
-        })
-        
-        # تنظيم الإجابة والسياق
-        organized_response = {
-            "answer": response["answer"],
-            "context": context
+        # إضافة الإجابة إلى سجل المحادثة
+        assistant_message = {
+            "role": "assistant",
+            "content": response["answer"],
+            "references": response.get("references", [])
         }
+        st.session_state.messages.append(assistant_message)
+        st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
         
-        return organized_response
+        # عرض الإجابة مع المراجع
+        display_response_with_references(response, response["answer"])
         
+        # إذا كانت أول رسالة، قم بإعادة تحميل الواجهة
+        if is_first_message:
+            st.rerun()
+            
     except Exception as e:
         st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
-        return None
-
-def display_references(refs):
-    if refs and "context" in refs:
-        page_info = []
-        for doc in refs["context"]:
-            page_number = doc.metadata.get("page", "unknown")
-            if page_number != "unknown" and str(page_number).isdigit():
-                page_info.append(int(page_number))
-
-        if page_info:
-            with st.expander(UI_TEXTS[interface_language]["page_references"]):
-                cols = st.columns(2)
-                
-                for idx, page_num in enumerate(sorted(set(page_info))):
-                    col_idx = idx % 2
-                    with cols[col_idx]:
-                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
-                        if screenshots:
-                            st.image(screenshots[0], use_container_width=True)
-                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
-
-def display_chat_message(message, with_refs=False):
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if with_refs and "references" in message:
-            display_references(message["references"])
-
-def display_response_with_references(response, assistant_response):
-    if not any(phrase in assistant_response for phrase in negative_phrases):
-        # إضافة المراجع إلى الرسالة
-        message = {
-            "role": "assistant",
-            "content": assistant_response,
-            "references": response
-        }
-        display_chat_message(message, with_refs=True)
-    else:
-        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
-        display_chat_message({
-            "role": "assistant",
-            "content": assistant_response
-        })
-
-# عرض سجل المحادثة
-for message in st.session_state.messages:
-    if message["role"] == "assistant" and "references" in message:
-        display_chat_message(message, with_refs=True)
-    else:
-        display_chat_message(message)
-
-# حقل إدخال النص
-human_input = st.chat_input(UI_TEXTS[interface_language]['input_placeholder'])
 
 # معالجة الإدخال النصي
 if human_input:
     user_message = {"role": "user", "content": human_input}
     st.session_state.messages.append(user_message)
     
-    # تحديث عنوان المحادثة مباشرة إذا كانت أول رسالة
-    if len(st.session_state.messages) == 1:
-        update_chat_title(st.session_state.current_chat_id, human_input)
+    # تحديث عنوان المحادثة وإظهار الإجابة إذا كانت أول رسالة
+    is_first_message = len(st.session_state.messages) == 1
+    if is_first_message:
+        # تحديث عنوان المحادثة
+        st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = human_input
     
     # تحديث سجل المحادثة
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
     
+    # عرض رسالة المستخدم
     display_chat_message(user_message)
     
-    try:
-        # تحضير السياق من الملفات PDF
-        context = get_relevant_context(human_input)
-        
-        # إنشاء الإجابة باستخدام OpenAI
-        response = create_chat_response(
-            human_input,
-            context,
-            st.session_state.memory,
-            interface_language
-        )
-        
-        # إضافة الإجابة إلى سجل المحادثة
-        assistant_message = {
-            "role": "assistant",
-            "content": response["answer"],
-            "references": response.get("references", [])
-        }
-        st.session_state.messages.append(assistant_message)
-        st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
-        
-        # عرض الإجابة مع المراجع
-        display_response_with_references(response, response["answer"])
-        
-        # إذا كانت أول رسالة، قم بإعادة تحميل الواجهة لتحديث العنوان والإجابة معاً
-        if len(st.session_state.messages) == 2:  # رسالة المستخدم + رسالة المساعد
-            st.rerun()
-            
-    except Exception as e:
-        st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
+    # معالجة السؤال وإظهار الإجابة
+    process_user_input(human_input, is_first_message)
 
 # معالجة الإدخال الصوتي
 if voice_input:
     user_message = {"role": "user", "content": voice_input}
     st.session_state.messages.append(user_message)
     
-    # تحديث عنوان المحادثة مباشرة إذا كانت أول رسالة
-    if len(st.session_state.messages) == 1:
-        update_chat_title(st.session_state.current_chat_id, voice_input)
+    # تحديث عنوان المحادثة وإظهار الإجابة إذا كانت أول رسالة
+    is_first_message = len(st.session_state.messages) == 1
+    if is_first_message:
+        # تحديث عنوان المحادثة
+        st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = voice_input
     
     # تحديث سجل المحادثة
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
     
+    # عرض رسالة المستخدم
     display_chat_message(user_message)
     
-    try:
-        # تحضير السياق من الملفات PDF
-        context = get_relevant_context(voice_input)
-        
-        # إنشاء الإجابة باستخدام OpenAI
-        response = create_chat_response(
-            voice_input,
-            context,
-            st.session_state.memory,
-            interface_language
-        )
-        
-        # إضافة الإجابة إلى سجل المحادثة
-        assistant_message = {
-            "role": "assistant",
-            "content": response["answer"],
-            "references": response.get("references", [])
-        }
-        st.session_state.messages.append(assistant_message)
-        st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
-        
-        # عرض الإجابة مع المراجع
-        display_response_with_references(response, response["answer"])
-        
-        # إذا كانت أول رسالة، قم بإعادة تحميل الواجهة لتحديث العنوان والإجابة معاً
-        if len(st.session_state.messages) == 2:  # رسالة المستخدم + رسالة المساعد
-            st.rerun()
-            
-    except Exception as e:
-        st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
+    # معالجة السؤال وإظهار الإجابة
+    process_user_input(voice_input, is_first_message)
 
 # Create new chat if no chat is selected
 if st.session_state.current_chat_id is None:
