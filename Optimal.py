@@ -437,6 +437,61 @@ def get_relevant_context(query, retriever=None):
         st.error(f"Error getting context: {str(e)}")
         return {"references": []}
 
+def create_chat_response(query, context, memory, language):
+    """إنشاء إجابة للمحادثة باستخدام Groq"""
+    try:
+        # تحضير السياق من المراجع
+        references_text = ""
+        if context and "references" in context:
+            for ref in context["references"]:
+                if ref["content"]:
+                    references_text += f"\n{ref['content']}"
+
+        # بناء الرسالة للنموذج
+        messages = []
+        
+        # إضافة السياق إذا وجد
+        if references_text:
+            messages.append({
+                "role": "system",
+                "content": f"You are a helpful assistant. Use this context to answer the question:\n{references_text}"
+            })
+        
+        # إضافة الذاكرة السابقة
+        if memory:
+            chat_history = memory.load_memory_variables({})
+            if "history" in chat_history:
+                messages.extend(chat_history["history"])
+        
+        # إضافة السؤال الحالي
+        messages.append({
+            "role": "user",
+            "content": query
+        })
+        
+        # الحصول على الإجابة من Groq
+        response = llm.invoke(messages)
+        
+        # تنظيم الإجابة
+        answer = response.content
+        
+        # إضافة الإجابة إلى الذاكرة
+        if memory:
+            memory.chat_memory.add_user_message(query)
+            memory.chat_memory.add_ai_message(answer)
+        
+        return {
+            "answer": answer,
+            "references": context.get("references", []) if context else []
+        }
+        
+    except Exception as e:
+        st.error(f"Error creating response: {str(e)}")
+        return {
+            "answer": UI_TEXTS[language]['error_response'],
+            "references": []
+        }
+
 def process_user_input(user_input, is_first_message=False):
     """معالجة إدخال المستخدم وإنشاء الرد"""
     try:
