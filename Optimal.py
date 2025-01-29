@@ -473,6 +473,82 @@ if human_input:
         st.session_state.memory.chat_memory.add_user_message(human_input)
         st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
+# دالة للتحكم في الوضع الداكن
+def toggle_dark_mode():
+    if "dark_mode" not in st.session_state:
+        st.session_state.dark_mode = False
+    
+    dark_mode = st.checkbox(
+        "الوضع الداكن" if st.session_state.interface_language == "العربية" else "Dark Mode",
+        value=st.session_state.dark_mode,
+        key="dark_mode_toggle"
+    )
+    
+    if dark_mode != st.session_state.dark_mode:
+        st.session_state.dark_mode = dark_mode
+        if dark_mode:
+            st.markdown("""
+                <style>
+                    :root {
+                        --bgc-blue: #00A0DC;
+                        --bgc-light-blue: #33B5E5;
+                        --bgc-dark: #1A1A1A;
+                        --bgc-light: #2D2D2D;
+                    }
+                    
+                    .stApp {
+                        background-color: var(--bgc-dark);
+                        color: white;
+                    }
+                    
+                    .info-card {
+                        background-color: var(--bgc-light);
+                        color: white;
+                    }
+                    
+                    .stButton>button {
+                        background-color: var(--bgc-blue);
+                        color: white;
+                    }
+                    
+                    .stChatMessage {
+                        background-color: var(--bgc-light);
+                        color: white;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+                <style>
+                    :root {
+                        --bgc-blue: #0066B3;
+                        --bgc-light-blue: #00A0DC;
+                        --bgc-dark: #1A1A1A;
+                        --bgc-light: #FFFFFF;
+                    }
+                    
+                    .stApp {
+                        background-color: white;
+                        color: black;
+                    }
+                    
+                    .info-card {
+                        background-color: white;
+                        color: black;
+                    }
+                    
+                    .stButton>button {
+                        background-color: var(--bgc-blue);
+                        color: white;
+                    }
+                    
+                    .stChatMessage {
+                        background-color: white;
+                        color: black;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+
 # تحديث الدالة الرئيسية
 def main():
     render_main_header()
