@@ -244,7 +244,8 @@ def create_new_chat():
         st.session_state.chat_history[chat_id] = {
             'messages': [],
             'timestamp': datetime.now(),
-            'first_message': ''
+            'first_message': '',
+            'topic': ''  # موضوع المحادثة
         }
     return chat_id
 
@@ -253,7 +254,7 @@ def load_chat(chat_id):
     if chat_id in st.session_state.chat_history:
         st.session_state.current_chat_id = chat_id
         st.session_state.messages = st.session_state.chat_history[chat_id]['messages']
-        st.experimental_rerun()
+        st.rerun()  # استخدام st.rerun بدلاً من experimental_rerun
 
 def format_chat_title(chat):
     """تنسيق عنوان المحادثة"""
@@ -269,16 +270,34 @@ def format_chat_title(chat):
         date_str = timestamp.strftime('%Y-%m-%d')
     
     time_str = timestamp.strftime('%H:%M')
-    first_msg = chat['first_message'][:30] + '...' if len(chat['first_message']) > 30 else chat['first_message']
     
-    return f"{date_str} {time_str} - {first_msg}"
+    # استخدام الموضوع إذا كان موجوداً، وإلا استخدام أول رسالة
+    display_text = chat['topic'] if chat['topic'] else chat['first_message']
+    if display_text:
+        display_text = display_text[:30] + '...' if len(display_text) > 30 else display_text
+    else:
+        display_text = UI_TEXTS[interface_language]['new_chat']
+    
+    return f"{date_str} {time_str} - {display_text}"
+
+def update_chat_topic(message):
+    """تحديث موضوع المحادثة بناءً على أول رسالة"""
+    chat_id = st.session_state.current_chat_id
+    if chat_id and not st.session_state.chat_history[chat_id]['topic']:
+        # تنظيف وتلخيص الرسالة
+        topic = message.strip()
+        topic = topic.replace('\n', ' ').replace('\r', '')
+        # اقتطاع الموضوع إلى جملة قصيرة
+        if len(topic) > 50:
+            topic = topic[:47] + "..."
+        st.session_state.chat_history[chat_id]['topic'] = topic
 
 # Sidebar for chat history
 with st.sidebar:
     # New Chat button
     if st.button(UI_TEXTS[interface_language]['new_chat'], use_container_width=True):
         create_new_chat()
-        st.experimental_rerun()
+        st.rerun()  # استخدام st.rerun بدلاً من experimental_rerun
     
     st.markdown("---")
     
@@ -503,9 +522,10 @@ if human_input:
     user_message = {"role": "user", "content": human_input}
     st.session_state.messages.append(user_message)
     
-    # حفظ أول رسالة في المحادثة
+    # تحديث موضوع المحادثة إذا كانت أول رسالة
     if not st.session_state.chat_history[st.session_state.current_chat_id]['first_message']:
         st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = human_input
+        update_chat_topic(human_input)
     
     # تحديث سجل المحادثة
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
@@ -541,9 +561,10 @@ if voice_input:
     user_message = {"role": "user", "content": voice_input}
     st.session_state.messages.append(user_message)
     
-    # حفظ أول رسالة في المحادثة
+    # تحديث موضوع المحادثة إذا كانت أول رسالة
     if not st.session_state.chat_history[st.session_state.current_chat_id]['first_message']:
         st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = voice_input
+        update_chat_topic(voice_input)
     
     # تحديث سجل المحادثة
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
