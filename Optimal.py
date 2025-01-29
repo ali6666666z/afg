@@ -1,35 +1,19 @@
-# تهيئة المتغيرات الأساسية
 import streamlit as st
 import os
-from importlib import import_module
-from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_groq import ChatGroq
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain.vectorstores.faiss import FAISS
-from streamlit_mic_recorder import speech_to_text
-from langchain.memory import ConversationBufferMemory
 from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_retrieval_chain
+from langchain_community.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain.memory import ConversationBufferMemory
+from streamlit_mic_recorder import speech_to_text  # Import speech-to-text function
+import fitz  # PyMuPDF for capturing screenshots
+import pdfplumber  # For searching text in PDF
 
-# تهيئة مفاتيح API
+# Initialize API key variables
 groq_api_key = "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"
 google_api_key = "AIzaSyDdAiOdIa2I28sphYw36Genb4D--2IN1tU"
-
-# تهيئة حالة الجلسة
-if "interface_language" not in st.session_state:
-    st.session_state.interface_language = "English"
-
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(return_messages=False)
-
-if "is_authenticated" not in st.session_state:
-    st.session_state.is_authenticated = False
-
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = False
 
 # تحديث إعدادات الصفحة
 st.set_page_config(
@@ -42,79 +26,27 @@ st.set_page_config(
 # إضافة CSS مخصص
 st.markdown("""
     <style>
-        /* الألوان الرئيسية */
+        /* الألوان الرئيسية لشركة غاز البصرة */
         :root {
             --bgc-blue: #0066B3;
             --bgc-light-blue: #00A0DC;
             --bgc-dark: #1A1A1A;
             --bgc-light: #FFFFFF;
-            --bgc-gray: #F7F7F8;
-            --bgc-border: #E5E5E5;
         }
 
-        /* تنسيق الصفحة الرئيسية */
-        .stApp {
-            background-color: var(--bgc-gray);
+        /* تنسيق العنوان الرئيسي */
+        .main-header {
+            background: linear-gradient(90deg, var(--bgc-blue) 0%, var(--bgc-light-blue) 100%);
+            padding: 2rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+            color: white;
+            text-align: center;
         }
 
         /* تنسيق الشريط الجانبي */
         .css-1d391kg {
             background-color: var(--bgc-dark);
-        }
-
-        /* تنسيق محادثات ChatGPT */
-        .chat-container {
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 2rem;
-        }
-
-        .message-container {
-            display: flex;
-            padding: 1.5rem;
-            margin: 0.5rem 0;
-            border-bottom: 1px solid var(--bgc-border);
-        }
-
-        .user-message {
-            background-color: white;
-        }
-
-        .assistant-message {
-            background-color: var(--bgc-gray);
-        }
-
-        .message-avatar {
-            width: 30px;
-            height: 30px;
-            margin-right: 1rem;
-            border-radius: 2px;
-        }
-
-        .message-content {
-            flex: 1;
-            line-height: 1.6;
-        }
-
-        /* تنسيق مربع الإدخال */
-        .input-container {
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
-            background: white;
-            padding: 1rem;
-            border-top: 1px solid var(--bgc-border);
-            z-index: 1000;
-        }
-
-        .stChatInput {
-            max-width: 800px;
-            margin: 0 auto;
-            border: 1px solid var(--bgc-border);
-            border-radius: 10px;
-            padding: 1rem;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.1);
         }
 
         /* تنسيق الأزرار */
@@ -128,6 +60,21 @@ st.markdown("""
         }
         .stButton>button:hover {
             background-color: var(--bgc-light-blue);
+        }
+
+        /* تنسيق مربع الدردشة */
+        .stChatMessage {
+            border-radius: 10px;
+            margin: 0.5rem 0;
+            padding: 1rem;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+
+        /* تنسيق مربع الإدخال */
+        .stChatInput {
+            border: 2px solid var(--bgc-blue);
+            border-radius: 5px;
+            padding: 0.5rem;
         }
 
         /* تنسيق الروابط */
@@ -147,6 +94,18 @@ st.markdown("""
             box-shadow: 0 2px 5px rgba(0,0,0,0.1);
             margin: 1rem 0;
         }
+
+        /* تنسيق الأيقونات */
+        .icon-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 50px;
+            height: 50px;
+            background-color: var(--bgc-blue);
+            border-radius: 50%;
+            margin: 0 auto 1rem auto;
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -154,19 +113,10 @@ st.markdown("""
 def render_main_header():
     st.markdown("""
         <div class="main-header">
-            <div style="text-align: center;">
-                <img src="BGC Logo Colored.svg" style="width: 150px; margin-bottom: 1rem;">
-            </div>
-            <h1 style="text-align: center; color: white;">
-                POWERING PROGRESS IN IRAQ
-            </h1>
-            <p style="text-align: center; color: white; font-size: 1.2rem;">
-                {subtitle}
-            </p>
+            <h1>POWERING PROGRESS IN IRAQ</h1>
+            <p>Basrah Gas Company ChatBot - Your Intelligent Assistant</p>
         </div>
-    """.format(
-        subtitle="شركة غاز البصرة - المساعد الذكي" if st.session_state.interface_language == "العربية" else "Basrah Gas Company - Intelligent Assistant"
-    ), unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
 
 # تحديث واجهة الشريط الجانبي
 def render_sidebar():
@@ -176,16 +126,16 @@ def render_sidebar():
         
         # قسم اللغة
         st.markdown('<div class="info-card">', unsafe_allow_html=True)
-        st.session_state.interface_language = st.selectbox(
+        interface_language = st.selectbox(
             "Language | اللغة",
             ["English", "العربية"],
-            index=0 if st.session_state.interface_language == "English" else 1
+            index=0 if interface_language == "English" else 1
         )
         st.markdown('</div>', unsafe_allow_html=True)
         
         # قسم الإعدادات
         st.markdown('<div class="info-card">', unsafe_allow_html=True)
-        if st.session_state.interface_language == "العربية":
+        if interface_language == "العربية":
             st.markdown("### الإعدادات")
         else:
             st.markdown("### Settings")
@@ -194,60 +144,8 @@ def render_sidebar():
 
 # تحديث عرض الرسائل
 def display_message(message):
-    role_class = "user-message" if message["role"] == "user" else "assistant-message"
-    avatar_src = "user-avatar.png" if message["role"] == "user" else "BGC Logo Colored.svg"
-    
-    st.markdown(f"""
-        <div class="message-container {role_class}">
-            <img src="{avatar_src}" class="message-avatar" alt="{message['role']}">
-            <div class="message-content">
-                {message["content"]}
-            </div>
-        </div>
-    """, unsafe_allow_html=True)
-
-# تعريف كلاس PDFSearchAndDisplay
-class PDFSearchAndDisplay:
-    def __init__(self):
-        """تهيئة الكلاس"""
-        self.fitz = __import__('fitz')  # استيراد PyMuPDF
-        
-    def capture_screenshots(self, pdf_path, highlighted_pages):
-        """التقاط صور للصفحات المحددة من ملف PDF
-        
-        Args:
-            pdf_path (str): مسار ملف PDF
-            highlighted_pages (list): قائمة من أرقام الصفحات والنصوص المراد تمييزها
-            
-        Returns:
-            list: قائمة من الصور الملتقطة
-        """
-        screenshots = []
-        try:
-            # فتح ملف PDF
-            doc = self.fitz.open(pdf_path)
-            
-            # معالجة كل صفحة محددة
-            for page_num, highlight_text in highlighted_pages:
-                if 0 <= page_num < len(doc):
-                    page = doc[page_num]
-                    
-                    # تحويل الصفحة إلى صورة
-                    pix = page.get_pixmap(matrix=self.fitz.Matrix(2, 2))
-                    
-                    # تحويل الصورة إلى بايتس
-                    img_bytes = pix.tobytes()
-                    
-                    # إضافة الصورة إلى القائمة
-                    screenshots.append(img_bytes)
-            
-            # إغلاق الملف
-            doc.close()
-            
-        except Exception as e:
-            st.error(f"حدث خطأ أثناء معالجة ملف PDF: {str(e)}")
-            
-        return screenshots
+    with st.chat_message(message["role"]):
+        st.markdown(f'<div class="message-content">{message["content"]}</div>', unsafe_allow_html=True)
 
 # Initialize the PDFSearchAndDisplay class with the default PDF file
 pdf_path = "BGC.pdf"
@@ -273,6 +171,31 @@ def apply_css_direction(direction):
         """,
         unsafe_allow_html=True,
     )
+
+# PDF Search and Screenshot Class
+class PDFSearchAndDisplay:
+    def __init__(self):
+        pass
+
+    def search_and_highlight(self, pdf_path, search_term):
+        highlighted_pages = []
+        with pdfplumber.open(pdf_path) as pdf:
+            for page_number, page in enumerate(pdf.pages):
+                text = page.extract_text()
+                if search_term in text:
+                    highlighted_pages.append((page_number, text))
+        return highlighted_pages
+
+    def capture_screenshots(self, pdf_path, pages):
+        doc = fitz.open(pdf_path)
+        screenshots = []
+        for page_number, _ in pages:
+            page = doc.load_page(page_number)
+            pix = page.get_pixmap()
+            screenshot_path = f"screenshot_page_{page_number}.png"
+            pix.save(screenshot_path)
+            screenshots.append(screenshot_path)
+        return screenshots
 
 # Validate API key inputs and initialize components if valid
 if groq_api_key and google_api_key:
@@ -319,7 +242,7 @@ if groq_api_key and google_api_key:
 
     # Load existing embeddings from files
     if "vectors" not in st.session_state:
-        with st.spinner("جارٍ تحميل التضميدات... الرجاء الانتظار." if st.session_state.interface_language == "العربية" else "Loading embeddings... Please wait."):
+        with st.spinner("جارٍ تحميل التضميدات... الرجاء الانتظار." if interface_language == "العربية" else "Loading embeddings... Please wait."):
             # Initialize embeddings
             embeddings = GoogleGenerativeAIEmbeddings(
                 model="models/embedding-001"
@@ -334,29 +257,29 @@ if groq_api_key and google_api_key:
                     allow_dangerous_deserialization=True  # Only use if you trust the source of the embeddings
                 )
             except Exception as e:
-                st.error(f"حدث خطأ أثناء تحميل التضميدات: {str(e)}" if st.session_state.interface_language == "العربية" else f"Error loading embeddings: {str(e)}")
+                st.error(f"حدث خطأ أثناء تحميل التضميدات: {str(e)}" if interface_language == "العربية" else f"Error loading embeddings: {str(e)}")
                 st.session_state.vectors = None
 
     # Microphone button in the sidebar
-    st.markdown("### الإدخال الصوتي" if st.session_state.interface_language == "العربية" else "### Voice Input")
-    input_lang_code = "ar" if st.session_state.interface_language == "العربية" else "en"
+    st.markdown("### الإدخال الصوتي" if interface_language == "العربية" else "### Voice Input")
+    input_lang_code = "ar" if interface_language == "العربية" else "en"  # Set language code based on interface language
     voice_input = speech_to_text(
         start_prompt="🎤",
-        stop_prompt="⏹️ إيقاف" if st.session_state.interface_language == "العربية" else "⏹️ Stop",
-        language=input_lang_code,
+        stop_prompt="⏹️ إيقاف" if interface_language == "العربية" else "⏹️ Stop",
+        language=input_lang_code,  # Language (en for English, ar for Arabic)
         use_container_width=True,
         just_once=True,
         key="mic_button",
     )
 
     # Reset button in the sidebar
-    if st.button("إعادة تعيين الدردشة" if st.session_state.interface_language == "العربية" else "Reset Chat"):
+    if st.button("إعادة تعيين الدردشة" if interface_language == "العربية" else "Reset Chat"):
         st.session_state.messages = []  # Clear chat history
         st.session_state.memory.clear()  # Clear memory
-        st.success("تمت إعادة تعيين الدردشة بنجاح." if st.session_state.interface_language == "العربية" else "Chat has been reset successfully.")
+        st.success("تمت إعادة تعيين الدردشة بنجاح." if interface_language == "العربية" else "Chat has been reset successfully.")
         st.rerun()  # Rerun the app to reflect changes immediately
 else:
-    st.error("الرجاء إدخال مفاتيح API للمتابعة." if st.session_state.interface_language == "العربية" else "Please enter both API keys to proceed.")
+    st.error("الرجاء إدخال مفاتيح API للمتابعة." if interface_language == "العربية" else "Please enter both API keys to proceed.")
 
 # Initialize session state for chat messages if not already done
 if "messages" not in st.session_state:
@@ -364,7 +287,10 @@ if "messages" not in st.session_state:
 
 # Initialize memory if not already done
 if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(return_messages=False)
+    st.session_state.memory = ConversationBufferMemory(
+        memory_key="history",
+        return_messages=True
+    )
 
 # List of negative phrases to check for unclear or insufficient answers
 negative_phrases = [
@@ -406,10 +332,10 @@ negative_phrases = [
     "Incorrect",
     "غير مناسب",
     "Inappropriate",
-    "Please provide me",
-    "يرجى تزويدي",
-    "Can you provide more",
-    "هل يمكنك تقديم المزيد"
+    "Please provide me",  # إضافة هذه العبارة
+    "يرجى تزويدي",  # إضافة هذه العبارة
+    "Can you provide more",  # إضافة هذه العبارة
+    "هل يمكنك تقديم المزيد"  # إضافة هذه العبارة
 ]
 
 # Function to display response with references and screenshots
@@ -435,8 +361,8 @@ def display_response_with_references(response, assistant_response):
                     sorted_pages = sorted(page_numbers)
                     page_numbers_str = ", ".join(map(str, sorted_pages))
                     st.markdown(
-                        f"**{'المصدر' if st.session_state.interface_language == 'العربية' else 'Source'}:** " +
-                        f"{'صفحة رقم' if st.session_state.interface_language == 'العربية' else 'Page'} {page_numbers_str}"
+                        f"**{'المصدر' if interface_language == 'العربية' else 'Source'}:** " +
+                        f"{'صفحة رقم' if interface_language == 'العربية' else 'Page'} {page_numbers_str}"
                     )
 
                     # التقاط وعرض لقطات الشاشة للصفحات ذات الصلة
@@ -453,18 +379,20 @@ def display_response_with_references(response, assistant_response):
                             with cols[idx % 2]:
                                 st.image(
                                     screenshot,
-                                    caption=f"{'صفحة' if st.session_state.interface_language == 'العربية' else 'Page'} {page_num}",
+                                    caption=f"{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}",
                                     use_container_width=True
                                 )
 
 # Display chat history
 for message in st.session_state.messages:
-    display_message(message)
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
 
 # If voice input is detected, process it
 if voice_input:
     st.session_state.messages.append({"role": "user", "content": voice_input})
-    display_message({"role": "user", "content": voice_input})
+    with st.chat_message("user"):
+        st.markdown(voice_input)
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         # Create and configure the document chain and retriever
@@ -489,7 +417,7 @@ if voice_input:
         st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
 # Text input field
-if st.session_state.interface_language == "العربية":
+if interface_language == "العربية":
     human_input = st.chat_input("اكتب سؤالك هنا...")
 else:
     human_input = st.chat_input("Type your question here...")
@@ -497,7 +425,8 @@ else:
 # If text input is detected, process it
 if human_input:
     st.session_state.messages.append({"role": "user", "content": human_input})
-    display_message({"role": "user", "content": human_input})
+    with st.chat_message("user"):
+        st.markdown(human_input)
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         # Create and configure the document chain and retriever
@@ -521,172 +450,39 @@ if human_input:
         st.session_state.memory.chat_memory.add_user_message(human_input)
         st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
-# دالة لعرض واجهة تسجيل الدخول
-def render_auth_interface():
-    st.markdown("""
-        <div class="auth-container">
-            <div class="info-card">
-                <h2 style="text-align: center;">
-                    {title}
-                </h2>
-                <p style="text-align: center;">
-                    {subtitle}
-                </p>
-            </div>
-        </div>
-    """.format(
-        title="تسجيل الدخول" if st.session_state.interface_language == "العربية" else "Login",
-        subtitle="الرجاء تسجيل الدخول للمتابعة" if st.session_state.interface_language == "العربية" else "Please login to continue"
-    ), unsafe_allow_html=True)
-
-    # نموذج تسجيل الدخول
-    with st.form("login_form"):
-        email = st.text_input(
-            "البريد الإلكتروني" if st.session_state.interface_language == "العربية" else "Email",
-            key="email"
-        )
-        password = st.text_input(
-            "كلمة المرور" if st.session_state.interface_language == "العربية" else "Password",
-            type="password",
-            key="password"
-        )
-        
-        # زر تسجيل الدخول
-        submit = st.form_submit_button(
-            "تسجيل الدخول" if st.session_state.interface_language == "العربية" else "Login"
-        )
-        
-        if submit:
-            # هنا يمكنك إضافة منطق التحقق من صحة بيانات تسجيل الدخول
-            # للتجربة، سنقوم بتسجيل الدخول مباشرة
-            st.session_state.is_authenticated = True
-            st.success(
-                "تم تسجيل الدخول بنجاح!" if st.session_state.interface_language == "العربية" else "Successfully logged in!"
-            )
-            st.rerun()
-
-    # رابط إنشاء حساب جديد
-    st.markdown("""
-        <div style="text-align: center; margin-top: 1rem;">
-            <p>
-                {text} <a href="#">{link_text}</a>
-            </p>
-        </div>
-    """.format(
-        text="ليس لديك حساب؟" if st.session_state.interface_language == "العربية" else "Don't have an account?",
-        link_text="إنشاء حساب جديد" if st.session_state.interface_language == "العربية" else "Create new account"
-    ), unsafe_allow_html=True)
-
-# دالة للتحكم في الوضع الداكن
-def toggle_dark_mode():
-    if "dark_mode" not in st.session_state:
-        st.session_state.dark_mode = False
-    
-    dark_mode = st.checkbox(
-        "الوضع الداكن" if st.session_state.interface_language == "العربية" else "Dark Mode",
-        value=st.session_state.dark_mode,
-        key="dark_mode_toggle"
-    )
-    
-    if dark_mode != st.session_state.dark_mode:
-        st.session_state.dark_mode = dark_mode
-        if dark_mode:
-            st.markdown("""
-                <style>
-                    :root {
-                        --bgc-blue: #00A0DC;
-                        --bgc-light-blue: #33B5E5;
-                        --bgc-dark: #1A1A1A;
-                        --bgc-light: #2D2D2D;
-                    }
-                    
-                    .stApp {
-                        background-color: var(--bgc-dark);
-                        color: white;
-                    }
-                    
-                    .info-card {
-                        background-color: var(--bgc-light);
-                        color: white;
-                    }
-                    
-                    .stButton>button {
-                        background-color: var(--bgc-blue);
-                        color: white;
-                    }
-                    
-                    .stChatMessage {
-                        background-color: var(--bgc-light);
-                        color: white;
-                    }
-                </style>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-                <style>
-                    :root {
-                        --bgc-blue: #0066B3;
-                        --bgc-light-blue: #00A0DC;
-                        --bgc-dark: #1A1A1A;
-                        --bgc-light: #FFFFFF;
-                    }
-                    
-                    .stApp {
-                        background-color: white;
-                        color: black;
-                    }
-                    
-                    .info-card {
-                        background-color: white;
-                        color: black;
-                    }
-                    
-                    .stButton>button {
-                        background-color: var(--bgc-blue);
-                        color: white;
-                    }
-                    
-                    .stChatMessage {
-                        background-color: white;
-                        color: black;
-                    }
-                </style>
-            """, unsafe_allow_html=True)
-
 # تحديث الدالة الرئيسية
 def main():
+    render_main_header()
+    render_sidebar()
+    
+    # عرض المحتوى الرئيسي
     if not st.session_state.is_authenticated:
         render_auth_interface()
     else:
-        render_main_header()
+        # عرض واجهة الدردشة
+        cols = st.columns([2, 1])
+        with cols[0]:
+            st.markdown('<div class="chat-container">', unsafe_allow_html=True)
+            for message in st.session_state.messages:
+                display_message(message)
+            st.markdown('</div>', unsafe_allow_html=True)
         
-        # عرض المحادثة
-        st.markdown('<div class="chat-container">', unsafe_allow_html=True)
-        for message in st.session_state.messages:
-            display_message(message)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # مربع الإدخال
-        st.markdown('<div class="input-container">', unsafe_allow_html=True)
-        human_input = st.chat_input(
-            "اكتب سؤالك هنا..." if st.session_state.interface_language == "العربية" else "Type your question here..."
-        )
-        
-        # زر المايكروفون
-        col1, col2 = st.columns([6, 1])
-        with col2:
-            voice_input = speech_to_text(
-                "🎤",
-                "⏹️",
-                language="ar" if st.session_state.interface_language == "العربية" else "en",
-                just_once=True,
-                key="voice_input"
-            )
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        # معالجة المدخلات
-        if human_input or voice_input:
-            process_input(human_input or voice_input)
+        with cols[1]:
+            st.markdown('<div class="info-card">', unsafe_allow_html=True)
+            if interface_language == "العربية":
+                st.markdown("### معلومات سريعة")
+                st.markdown("- اطرح أسئلتك باللغة العربية أو الإنجليزية")
+                st.markdown("- استخدم الميكروفون للإدخال الصوتي")
+                st.markdown("- اضغط على زر المحادثة الجديدة لبدء محادثة جديدة")
+            else:
+                st.markdown("### Quick Info")
+                st.markdown("- Ask questions in Arabic or English")
+                st.markdown("- Use the microphone for voice input")
+                st.markdown("- Click New Chat to start a fresh conversation")
+            st.markdown('</div>', unsafe_allow_html=True)
 
 if __name__ == "__main__":
-    main()
+    main()role": "assistant", "content": assistant_response}
+        )
+        with st.chat_message("assistant"):
+            st.markdown(assistant_response)
