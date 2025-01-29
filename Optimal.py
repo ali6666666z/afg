@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 from langchain_groq import ChatGroq
 from langchain.chains import create_retrieval_chain
