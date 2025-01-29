@@ -291,12 +291,18 @@ def display_response_with_references(response, assistant_response):
                             st.markdown(f"**{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}:**")
                             st.image(screenshots[0], use_column_width=True)
 
-# Display chat history
+# حقل إدخال النص
+if interface_language == "العربية":
+    human_input = st.chat_input("اكتب سؤالك هنا...")
+else:
+    human_input = st.chat_input("Type your question here...")
+
+# عرض سجل المحادثة
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
 
-# If voice input is detected, process it
+# معالجة الإدخال الصوتي
 if voice_input:
     st.session_state.messages.append({"role": "user", "content": voice_input})
     with st.chat_message("user"):
@@ -311,15 +317,24 @@ if voice_input:
         })
         assistant_response = response["answer"]
 
-        # Save messages in memory
+        # حفظ الرسائل في الذاكرة
         st.session_state.messages.append({"role": "assistant", "content": assistant_response})
         st.session_state.memory.chat_memory.add_user_message(voice_input)
         st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
-        # Display response with references and screenshots
+        # عرض الرد مع المراجع والصور
         display_response_with_references(response, assistant_response)
+    else:
+        # رسالة خطأ إذا لم يتم تحميل التضميدات
+        assistant_response = (
+            "لم يتم تحميل التضميدات. يرجى التحقق مما إذا كان مسار التضميدات صحيحًا." if interface_language == "العربية" 
+            else "Embeddings not loaded. Please check if the embeddings path is correct."
+        )
+        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+        with st.chat_message("assistant"):
+            st.markdown(assistant_response)
 
-# If text input is detected, process it
+# معالجة الإدخال النصي
 if human_input:
     st.session_state.messages.append({"role": "user", "content": human_input})
     with st.chat_message("user"):
@@ -334,16 +349,19 @@ if human_input:
         })
         assistant_response = response["answer"]
 
-        # Save messages in memory
+        # حفظ الرسائل في الذاكرة
         st.session_state.messages.append({"role": "assistant", "content": assistant_response})
         st.session_state.memory.chat_memory.add_user_message(human_input)
         st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
-        # Display response with references and screenshots
+        # عرض الرد مع المراجع والصور
         display_response_with_references(response, assistant_response)
-
-# Text input field
-if interface_language == "العربية":
-    human_input = st.chat_input("اكتب سؤالك هنا...")
-else:
-    human_input = st.chat_input("Type your question here...")
+    else:
+        # رسالة خطأ إذا لم يتم تحميل التضميدات
+        assistant_response = (
+            "لم يتم تحميل التضميدات. يرجى التحقق مما إذا كان مسار التضميدات صحيحًا." if interface_language == "العربية" 
+            else "Embeddings not loaded. Please check if the embeddings path is correct."
+        )
+        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+        with st.chat_message("assistant"):
+            st.markdown(assistant_response)
