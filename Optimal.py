@@ -204,7 +204,10 @@ with st.sidebar:
         # Reset button in the sidebar
         if st.button("إعادة تعيين الدردشة" if interface_language == "العربية" else "Reset Chat"):
             st.session_state.messages = []  # Clear chat history
-            st.session_state.memory.clear()  # Clear memory
+            st.session_state.memory = ConversationBufferMemory(  # Create new memory instance
+                memory_key="history",
+                return_messages=True
+            )
             st.success("تمت إعادة تعيين الدردشة بنجاح." if interface_language == "العربية" else "Chat has been reset successfully.")
             st.rerun()  # Rerun the app to reflect changes immediately
     else:
@@ -239,7 +242,11 @@ def create_new_chat():
     """إنشاء محادثة جديدة"""
     chat_id = datetime.now().strftime('%Y%m%d_%H%M%S')
     st.session_state.current_chat_id = chat_id
-    st.session_state.messages = []
+    st.session_state.messages = []  # Clear messages
+    st.session_state.memory = ConversationBufferMemory(  # Create new memory instance
+        memory_key="history",
+        return_messages=True
+    )
     if chat_id not in st.session_state.chat_history:
         st.session_state.chat_history[chat_id] = {
             'messages': [],
@@ -262,7 +269,18 @@ def load_chat(chat_id):
     if chat_id in st.session_state.chat_history:
         st.session_state.current_chat_id = chat_id
         st.session_state.messages = st.session_state.chat_history[chat_id]['messages']
-        st.rerun()  # استخدام st.rerun بدلاً من experimental_rerun
+        # Create new memory instance for loaded chat
+        st.session_state.memory = ConversationBufferMemory(
+            memory_key="history",
+            return_messages=True
+        )
+        # Rebuild memory from chat history
+        for msg in st.session_state.messages:
+            if msg["role"] == "user":
+                st.session_state.memory.chat_memory.add_user_message(msg["content"])
+            elif msg["role"] == "assistant":
+                st.session_state.memory.chat_memory.add_ai_message(msg["content"])
+        st.rerun()
 
 def format_chat_title(chat):
     """تنسيق عنوان المحادثة"""
