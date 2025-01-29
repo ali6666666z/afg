@@ -147,6 +147,49 @@ def display_message(message):
     with st.chat_message(message["role"]):
         st.markdown(f'<div class="message-content">{message["content"]}</div>', unsafe_allow_html=True)
 
+# تعريف كلاس PDFSearchAndDisplay
+class PDFSearchAndDisplay:
+    def __init__(self):
+        """تهيئة الكلاس"""
+        self.fitz = __import__('fitz')  # استيراد PyMuPDF
+        
+    def capture_screenshots(self, pdf_path, highlighted_pages):
+        """التقاط صور للصفحات المحددة من ملف PDF
+        
+        Args:
+            pdf_path (str): مسار ملف PDF
+            highlighted_pages (list): قائمة من أرقام الصفحات والنصوص المراد تمييزها
+            
+        Returns:
+            list: قائمة من الصور الملتقطة
+        """
+        screenshots = []
+        try:
+            # فتح ملف PDF
+            doc = self.fitz.open(pdf_path)
+            
+            # معالجة كل صفحة محددة
+            for page_num, highlight_text in highlighted_pages:
+                if 0 <= page_num < len(doc):
+                    page = doc[page_num]
+                    
+                    # تحويل الصفحة إلى صورة
+                    pix = page.get_pixmap(matrix=self.fitz.Matrix(2, 2))
+                    
+                    # تحويل الصورة إلى بايتس
+                    img_bytes = pix.tobytes()
+                    
+                    # إضافة الصورة إلى القائمة
+                    screenshots.append(img_bytes)
+            
+            # إغلاق الملف
+            doc.close()
+            
+        except Exception as e:
+            st.error(f"حدث خطأ أثناء معالجة ملف PDF: {str(e)}")
+            
+        return screenshots
+
 # Initialize the PDFSearchAndDisplay class with the default PDF file
 pdf_path = "BGC.pdf"
 pdf_searcher = PDFSearchAndDisplay()
@@ -171,31 +214,6 @@ def apply_css_direction(direction):
         """,
         unsafe_allow_html=True,
     )
-
-# PDF Search and Screenshot Class
-class PDFSearchAndDisplay:
-    def __init__(self):
-        pass
-
-    def search_and_highlight(self, pdf_path, search_term):
-        highlighted_pages = []
-        with pdfplumber.open(pdf_path) as pdf:
-            for page_number, page in enumerate(pdf.pages):
-                text = page.extract_text()
-                if search_term in text:
-                    highlighted_pages.append((page_number, text))
-        return highlighted_pages
-
-    def capture_screenshots(self, pdf_path, pages):
-        doc = fitz.open(pdf_path)
-        screenshots = []
-        for page_number, _ in pages:
-            page = doc.load_page(page_number)
-            pix = page.get_pixmap()
-            screenshot_path = f"screenshot_page_{page_number}.png"
-            pix.save(screenshot_path)
-            screenshots.append(screenshot_path)
-        return screenshots
 
 # Validate API key inputs and initialize components if valid
 if groq_api_key and google_api_key:
