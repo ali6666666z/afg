@@ -244,10 +244,18 @@ def create_new_chat():
         st.session_state.chat_history[chat_id] = {
             'messages': [],
             'timestamp': datetime.now(),
-            'first_message': '',
-            'topic': ''  # موضوع المحادثة
+            'first_message': UI_TEXTS[interface_language]['new_chat']
         }
     return chat_id
+
+def update_chat_title(chat_id, message):
+    """تحديث عنوان المحادثة"""
+    if chat_id in st.session_state.chat_history:
+        # تنظيف الرسالة وتقصيرها إذا كانت طويلة
+        title = message.strip().replace('\n', ' ')
+        title = title[:50] + '...' if len(title) > 50 else title
+        st.session_state.chat_history[chat_id]['first_message'] = title
+        st.rerun()
 
 def load_chat(chat_id):
     """تحميل محادثة محددة"""
@@ -509,9 +517,9 @@ if human_input:
     user_message = {"role": "user", "content": human_input}
     st.session_state.messages.append(user_message)
     
-    # حفظ أول رسالة في المحادثة
-    if not st.session_state.chat_history[st.session_state.current_chat_id]['first_message']:
-        st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = human_input
+    # تحديث عنوان المحادثة مباشرة إذا كانت أول رسالة
+    if len(st.session_state.messages) == 1:
+        update_chat_title(st.session_state.current_chat_id, human_input)
     
     # تحديث سجل المحادثة
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
@@ -542,14 +550,14 @@ if human_input:
         except Exception as e:
             st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
 
-# معالجة الإدخال الصوتي بنفس الطريقة
+# معالجة الإدخال الصوتي
 if voice_input:
     user_message = {"role": "user", "content": voice_input}
     st.session_state.messages.append(user_message)
     
-    # حفظ أول رسالة في المحادثة
-    if not st.session_state.chat_history[st.session_state.current_chat_id]['first_message']:
-        st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = voice_input
+    # تحديث عنوان المحادثة مباشرة إذا كانت أول رسالة
+    if len(st.session_state.messages) == 1:
+        update_chat_title(st.session_state.current_chat_id, voice_input)
     
     # تحديث سجل المحادثة
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
