@@ -46,7 +46,79 @@ def apply_css_direction(direction):
 # PDF Search and Screenshot Class
 class PDFSearchAndDisplay:
     def __init__(self):
-        pass
+        """تهيئة الكلاس"""
+        self.fitz = fitz  # استخدام fitz المستورد مباشرة
+        
+    def get_text_instances(self, page_text, search_text):
+        """البحث عن جميع مواضع النص في الصفحة"""
+        instances = []
+        search_text = search_text.lower()
+        page_text = page_text.lower()
+        
+        start = 0
+        while True:
+            index = page_text.find(search_text, start)
+            if index == -1:
+                break
+            instances.append((index, index + len(search_text)))
+            start = index + 1
+            
+        return instances
+
+    def capture_screenshots(self, pdf_path, page_info):
+        """التقاط صور للصفحات المحددة من ملف PDF مع تمييز النص
+        
+        Args:
+            pdf_path (str): مسار ملف PDF
+            page_info (list): قائمة من (رقم الصفحة، النص المقتبس)
+        """
+        screenshots = []
+        try:
+            # فتح ملف PDF
+            doc = self.fitz.open(pdf_path)
+            
+            # معالجة كل صفحة محددة
+            for page_num, quoted_text in page_info:
+                if 0 <= page_num < len(doc):
+                    page = doc[page_num]
+                    
+                    # البحث عن النص المقتبس في الصفحة
+                    if quoted_text:
+                        # الحصول على النص الكامل للصفحة
+                        page_text = page.get_text()
+                        
+                        # البحث عن جميع مواضع النص المقتبس
+                        text_instances = self.get_text_instances(page_text, quoted_text)
+                        
+                        # تمييز كل موضع للنص
+                        for start, end in text_instances:
+                            # البحث عن مواضع النص على الصفحة
+                            text_instances = page.search_for(quoted_text)
+                            
+                            # إضافة تمييز لكل موضع
+                            for inst in text_instances:
+                                highlight = page.add_highlight_annot(inst)
+                                highlight.set_colors({"stroke": (1, 1, 0)})  # لون أصفر للتمييز
+                                highlight.update()
+                    
+                    # تحويل الصفحة إلى صورة بدقة عالية
+                    zoom = 2  # مضاعفة الدقة
+                    mat = fitz.Matrix(zoom, zoom)
+                    pix = page.get_pixmap(matrix=mat)
+                    
+                    # تحويل الصورة إلى بايتس
+                    img_bytes = pix.tobytes()
+                    
+                    # إضافة الصورة إلى القائمة
+                    screenshots.append(img_bytes)
+            
+            # إغلاق الملف
+            doc.close()
+            
+        except Exception as e:
+            st.error(f"حدث خطأ أثناء معالجة ملف PDF: {str(e)}")
+            
+        return screenshots
 
     def search_and_highlight(self, pdf_path, search_term):
         highlighted_pages = []
@@ -56,17 +128,6 @@ class PDFSearchAndDisplay:
                 if search_term in text:
                     highlighted_pages.append((page_number, text))
         return highlighted_pages
-
-    def capture_screenshots(self, pdf_path, pages):
-        doc = fitz.open(pdf_path)
-        screenshots = []
-        for page_number, _ in pages:
-            page = doc.load_page(page_number)
-            pix = page.get_pixmap()
-            screenshot_path = f"screenshot_page_{page_number}.png"
-            pix.save(screenshot_path)
-            screenshots.append(screenshot_path)
-        return screenshots
 
 # Sidebar configuration
 with st.sidebar:
@@ -267,16 +328,18 @@ def display_chat_message(message, with_refs=False):
 # دالة عرض المراجع والصور
 def display_references(refs):
     if refs and "context" in refs:
-        # استخراج أرقام الصفحات الفريدة من السياق
-        page_numbers = set()
+        # استخراج أرقام الصفحات والنصوص المقتبسة من السياق
+        page_info = []
         for doc in refs["context"]:
             page_number = doc.metadata.get("page", "unknown")
             if page_number != "unknown" and str(page_number).isdigit():
-                page_numbers.add(int(page_number))
+                # استخراج النص المقتبس من المستند
+                quoted_text = doc.page_content
+                page_info.append((int(page_number), quoted_text))
 
         # عرض أرقام الصفحات
-        if page_numbers:
-            sorted_pages = sorted(page_numbers)
+        if page_info:
+            sorted_pages = sorted(list(set(page_num for page_num, _ in page_info)))
             page_numbers_str = ", ".join(map(str, sorted_pages))
             st.markdown("---")
             st.markdown(
@@ -288,21 +351,23 @@ def display_references(refs):
             cols = st.columns(2)  # عمودان فقط
             
             # التقاط وعرض لقطات الشاشة للصفحات ذات الصلة
-            for idx, page_num in enumerate(sorted_pages):
+            for idx, (page_num, quoted_text) in enumerate(page_info):
                 col_idx = idx % 2  # تحديد رقم العمود (0 أو 1)
                 with cols[col_idx]:
-                    highlighted_pages = [(page_num, "")]
-                    screenshots = pdf_searcher.capture_screenshots(pdf_path, highlighted_pages)
+                    screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, quoted_text)])
                     if screenshots:
-                        # عرض الصورة بحجم مناسب
+                        # عرض الصورة مع النص المميز
                         st.image(
                             screenshots[0],
                             use_container_width=True,
-                            width=300  # عرض أكبر قليلاً لأن لدينا عمودين فقط
+                            width=300
                         )
-                        # عرض رقم الصفحة أسفل الصورة
+                        # عرض رقم الصفحة والنص المقتبس
                         st.markdown(
-                            f"<div style='text-align: center;'><p><strong>{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}</strong></p></div>",
+                            f"<div style='text-align: center;'>"
+                            f"<p><strong>{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}</strong></p>"
+                            f"<p><em>{quoted_text}</em></p>"
+                            f"</div>",
                             unsafe_allow_html=True
                         )
 
