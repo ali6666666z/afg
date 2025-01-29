@@ -11,6 +11,7 @@ from langchain.prompts import PromptTemplate
 from streamlit_mic_recorder import speech_to_text  # Import speech-to-text function
 import fitz  # PyMuPDF for capturing screenshots
 import pdfplumber  # For searching text in PDF
+import re
 
 # Initialize API key variables
 groq_api_key = "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"
@@ -130,6 +131,34 @@ class PDFSearchAndDisplay:
                     highlighted_pages.append((page_number, text))
         return highlighted_pages
 
+    def capture_page_screenshot(self, page_num):
+        """التقاط صورة للصفحة المحددة من ملف PDF"""
+        try:
+            # فتح ملف PDF
+            doc = self.fitz.open("BGC.pdf")
+            
+            # معالجة الصفحة المحددة
+            if 0 <= page_num < len(doc):
+                page = doc[page_num]
+                
+                # تحويل الصفحة إلى صورة بدقة عالية
+                zoom = 2  # مضاعفة الدقة
+                mat = fitz.Matrix(zoom, zoom)
+                pix = page.get_pixmap(matrix=mat)
+                
+                # تحويل الصورة إلى بايتس
+                img_bytes = pix.tobytes()
+                
+                # إغلاق الملف
+                doc.close()
+                
+                return img_bytes
+            
+        except Exception as e:
+            st.error(f"حدث خطأ أثناء معالجة ملف PDF: {str(e)}")
+            
+        return None
+
 # Sidebar configuration
 with st.sidebar:
     # Language selection dropdown
@@ -154,34 +183,22 @@ with st.sidebar:
         # تعريف القالب الأساسي للدردشة
         def create_chat_prompt():
             return PromptTemplate(
-                template="""أنت مساعد خبير لشركة غاز البصرة (BGC). مهمتك هي تقديم إجابات دقيقة ومفصلة بناءً على المعلومات المتوفرة. اتبع هذه التعليمات بدقة:
+                template="""You are an expert assistant for Basrah Gas Company (BGC). Your task is to provide accurate and detailed answers based on the available information. Follow these instructions carefully:
 
-1. تحليل السياق:
-   - اقرأ السياق المقدم بعناية
-   - حدد المعلومات الأكثر صلة بالسؤال
-   - تأكد من فهم جميع التفاصيل المهمة
+1. If the user asks in Arabic, respond in Arabic. If they ask in English, respond in English.
+2. Provide direct and clear answers.
+3. Use only the information from the provided context.
+4. Stay professional and organized.
 
-2. صياغة الإجابة:
-   - ابدأ بالنقاط الأكثر أهمية وصلة بالسؤال
-   - قدم معلومات دقيقة ومثبتة من السياق
-   - نظم الإجابة بشكل منطقي ومتسلسل
-   - استخدم لغة واضحة ومهنية
-
-3. التأكد من الجودة:
-   - تحقق من أن الإجابة شاملة وتغطي جميع جوانب السؤال
-   - تأكد من عدم وجود معلومات متناقضة
-   - أضف تفاصيل داعمة عند الحاجة
-
-السياق المقدم:
+Context:
 {context}
 
-السؤال: {input}
+Question: {input}
 
-قم بصياغة إجابة:
-1. مباشرة وشاملة
-2. مدعومة بالأدلة من السياق
-3. منظمة ومهنية
-4. سهلة الفهم والتطبيق
+Remember to:
+1. Match the language of the question
+2. Be precise and accurate
+3. Stay organized and professional
 """,
                 input_variables=["context", "input"]
             )
@@ -326,108 +343,29 @@ negative_phrases = [
     "هل يمكنك تقديم المزيد"  # إضافة هذه العبارة
 ]
 
-def clean_text(text):
-    """تنظيف النص من الأخطاء والفراغات الزائدة"""
-    # إزالة الفراغات الزائدة
-    text = ' '.join(text.split())
-    # إزالة علامات التنسيق غير المرغوبة
-    text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
-    return text
-
-def extract_complete_sentences(text, max_length=200):
-    """استخراج جمل كاملة من النص"""
-    # تقسيم النص إلى جمل
-    sentences = text.split('.')
-    complete_text = []
-    current_length = 0
-    
-    for sentence in sentences:
-        sentence = sentence.strip()
-        if not sentence:
-            continue
-            
-        # التأكد من أن الجملة تبدأ بحرف كبير وتنتهي بنقطة
-        if sentence[0].isalpha():
-            sentence = sentence[0].upper() + sentence[1:]
-        if not sentence.endswith('.'):
-            sentence += '.'
-            
-        # إضافة الجملة إذا كانت ضمن الحد الأقصى للطول
-        if current_length + len(sentence) <= max_length:
-            complete_text.append(sentence)
-            current_length += len(sentence)
-        else:
-            break
-            
-    return ' '.join(complete_text)
+def detect_language(text):
+    """تحديد لغة النص تلقائياً"""
+    # التحقق من وجود حروف عربية في النص
+    arabic_pattern = re.compile('[\u0600-\u06FF]')
+    if arabic_pattern.search(text):
+        return "ar"
+    return "en"
 
 def get_relevant_context(retriever, query, k=5):
-    """الحصول على السياق الأكثر صلة وتنظيمه"""
-    # استرجاع المستندات ذات الصلة مع زيادة عدد النتائج
+    """الحصول على السياق الأكثر صلة"""
     docs = retriever.get_relevant_documents(
         query,
-        search_kwargs={"k": k * 2}  # مضاعفة عدد النتائج للحصول على سياق أفضل
+        search_kwargs={"k": k}
     )
-    
-    # تنظيم وتنقية السياق
-    organized_context = []
-    total_length = 0
-    max_length = 1000  # زيادة الحد الأقصى للنص
-    
-    for doc in docs:
-        text = clean_text(doc.page_content)
-        complete_text = extract_complete_sentences(text, max_length=300)  # زيادة طول الجمل
-        
-        if complete_text and not any(
-            similar_text(complete_text, existing.page_content) > 0.7
-            for existing in organized_context
-        ):
-            # التحقق من عدم تكرار نفس المعلومات
-            if total_length + len(complete_text) <= max_length:
-                organized_doc = Document(
-                    page_content=complete_text,
-                    metadata={"page": doc.metadata.get("page", "unknown")}
-                )
-                organized_context.append(organized_doc)
-                total_length += len(complete_text)
-    
-    # ترتيب السياق حسب الأهمية
-    organized_context.sort(
-        key=lambda x: calculate_relevance_score(x.page_content, query),
-        reverse=True
-    )
-    
-    return organized_context[:k]
-
-def similar_text(text1, text2):
-    """حساب مدى تشابه النصوص"""
-    words1 = set(text1.lower().split())
-    words2 = set(text2.lower().split())
-    intersection = words1.intersection(words2)
-    union = words1.union(words2)
-    return len(intersection) / len(union) if union else 0
-
-def calculate_relevance_score(text, query):
-    """حساب درجة أهمية النص بالنسبة للسؤال"""
-    # تحويل النص والسؤال إلى كلمات
-    text_words = set(text.lower().split())
-    query_words = set(query.lower().split())
-    
-    # حساب عدد الكلمات المشتركة
-    common_words = len(text_words.intersection(query_words))
-    
-    # حساب طول النص (عقوبة للنصوص الطويلة جداً)
-    length_penalty = 1.0 / (1.0 + len(text_words) / 100.0)
-    
-    # حساب الدرجة النهائية
-    score = common_words * length_penalty
-    
-    return score
+    return docs[:k]
 
 def process_input(input_text, retriever, llm, memory):
-    """معالجة إدخال المستخدم مع تحسين جودة الإجابات"""
+    """معالجة إدخال المستخدم مع دعم اللغتين"""
     try:
-        # الحصول على السياق المحسن
+        # تحديد لغة السؤال
+        lang = detect_language(input_text)
+        
+        # الحصول على السياق
         context = get_relevant_context(retriever, input_text)
         
         # إنشاء القالب والسلسلة
@@ -437,16 +375,12 @@ def process_input(input_text, retriever, llm, memory):
             combine_docs_chain=create_custom_chain(llm, prompt)
         )
         
-        # إضافة تعليمات إضافية للنموذج
-        enhanced_input = f"""
-        السؤال: {input_text}
-        
-        ملاحظات مهمة:
-        1. قدم إجابة شاملة ودقيقة
-        2. استخدم أهم المعلومات من السياق
-        3. نظم الإجابة بشكل منطقي
-        4. اذكر التفاصيل المهمة
-        """
+        # إعداد السؤال مع تعليمات اللغة
+        enhanced_input = input_text
+        if lang == "ar":
+            enhanced_input = f"أجب باللغة العربية: {input_text}"
+        else:
+            enhanced_input = f"Please answer in English: {input_text}"
         
         # الحصول على الإجابة
         response = chain.invoke({
@@ -454,103 +388,81 @@ def process_input(input_text, retriever, llm, memory):
             "history": memory.load_memory_variables({})["history"]
         })
         
-        # تنظيم الإجابة والسياق
-        organized_response = {
+        return {
             "answer": response["answer"],
-            "context": context
+            "context": context,
+            "language": lang
         }
-        
-        return organized_response
         
     except Exception as e:
         st.error(f"حدث خطأ أثناء معالجة السؤال: {str(e)}")
         return None
 
-def display_chat_message(message, with_refs=False):
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if with_refs and "references" in message:
-            display_references(message["references"])
-
-def display_references(refs):
-    if refs and "context" in refs:
-        # استخراج أرقام الصفحات والنصوص المقتبسة من السياق
-        page_info = []
-        for doc in refs["context"]:
-            page_number = doc.metadata.get("page", "unknown")
-            if page_number != "unknown" and str(page_number).isdigit():
-                # استخراج النص المقتبس من المستند
-                quoted_text = doc.page_content
-                page_info.append((int(page_number), quoted_text))
-
-        # عرض أرقام الصفحات
-        if page_info:
-            sorted_pages = sorted(list(set(page_num for page_num, _ in page_info)))
-            page_numbers_str = ", ".join(map(str, sorted_pages))
-            st.markdown("---")
-            st.markdown(
-                f"**{'المصدر' if interface_language == 'العربية' else 'Source'}:** " +
-                f"{'صفحة رقم' if interface_language == 'العربية' else 'Page'} {page_numbers_str}"
-            )
-
-            # إنشاء عمودين لعرض الصور
-            cols = st.columns(2)  # عمودان فقط
+def display_response_with_references(response_data):
+    """عرض الإجابة مع الصور"""
+    if not response_data:
+        return
+        
+    # عرض الإجابة
+    if isinstance(response_data, dict):
+        if "answer" in response_data:
+            st.write(response_data["answer"])
+        elif "content" in response_data:
+            st.write(response_data["content"])
+        
+        # عرض الصور
+        context_data = None
+        if "context" in response_data:
+            context_data = response_data["context"]
+        elif "references" in response_data and isinstance(response_data["references"], dict):
+            context_data = response_data["references"].get("context")
+        
+        if context_data:
+            # تجميع الصور
+            images_data = []
+            for doc in context_data:
+                page_num = doc.metadata.get("page", "غير معروف")
+                try:
+                    # التقاط لقطة من الصفحة بدون تظليل
+                    image = pdf_searcher.capture_page_screenshot(page_num)
+                    if image:
+                        images_data.append((image, page_num))
+                except Exception as e:
+                    continue
             
-            # التقاط وعرض لقطات الشاشة للصفحات ذات الصلة
-            for idx, (page_num, quoted_text) in enumerate(page_info):
-                col_idx = idx % 2  # تحديد رقم العمود (0 أو 1)
-                with cols[col_idx]:
-                    screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, quoted_text)])
-                    if screenshots:
-                        # عرض الصورة مع النص المميز
-                        st.image(
-                            screenshots[0],
-                            use_container_width=True,
-                            width=300
-                        )
-                        # عرض رقم الصفحة والنص المقتبس
-                        st.markdown(
-                            f"<div style='text-align: center;'>"
-                            f"<p><strong>{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}</strong></p>"
-                            f"<p><em>{quoted_text}</em></p>"
-                            f"</div>",
-                            unsafe_allow_html=True
-                        )
-
-def display_response_with_references(response, assistant_response):
-    if not any(phrase in assistant_response for phrase in negative_phrases):
-        # إضافة المراجع إلى الرسالة
-        message = {
-            "role": "assistant",
-            "content": assistant_response,
-            "references": response
-        }
-        display_chat_message(message, with_refs=True)
+            # عرض الصور في شبكة
+            if images_data:
+                cols = st.columns(2)
+                for idx, (image, page_num) in enumerate(images_data):
+                    with cols[idx % 2]:
+                        st.image(image)
+                        # عرض رقم الصفحة بناءً على لغة السؤال
+                        lang = response_data.get("language", "en")
+                        if lang == "ar":
+                            st.markdown(f"**صفحة {page_num}**")
+                        else:
+                            st.markdown(f"**Page {page_num}**")
     else:
-        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
-        display_chat_message({
-            "role": "assistant",
-            "content": assistant_response
-        })
+        st.write(response_data)
 
 # عرض سجل المحادثة
 for message in st.session_state.messages:
     if message["role"] == "assistant" and "references" in message:
-        display_chat_message(message, with_refs=True)
+        display_response_with_references(message["references"])
     else:
-        display_chat_message(message)
+        st.write(message["content"])
 
 # حقل إدخال النص
 if interface_language == "العربية":
-    human_input = st.chat_input("اكتب سؤالك هنا...")
+    human_input = st.text_input("اكتب سؤالك هنا...")
 else:
-    human_input = st.chat_input("Type your question here...")
+    human_input = st.text_input("Type your question here...")
 
 # معالجة الإدخال النصي
 if human_input:
     user_message = {"role": "user", "content": human_input}
     st.session_state.messages.append(user_message)
-    display_chat_message(user_message)
+    st.write(user_message["content"])
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         try:
@@ -566,43 +478,34 @@ if human_input:
                 assistant_message = {
                     "role": "assistant",
                     "content": response["answer"],
-                    "references": {"context": response["context"]}
+                    "references": response
                 }
                 st.session_state.messages.append(assistant_message)
-                st.session_state.memory.chat_memory.add_user_message(human_input)
-                st.session_state.memory.chat_memory.add_ai_message(response["answer"])
-
-                # عرض الرد مع المراجع والصور
-                display_response_with_references(response, response["answer"])
+                display_response_with_references(response)
         except Exception as e:
             st.error(f"حدث خطأ: {str(e)}")
 
 # معالجة الإدخال الصوتي بنفس الطريقة
 if voice_input:
-    user_message = {"role": "user", "content": voice_input}
-    st.session_state.messages.append(user_message)
-    display_chat_message(user_message)
+    # تحويل الصوت إلى نص مع الكشف التلقائي عن اللغة
+    try:
+        text = speech_to_text(voice_input)
+        if text:
+            user_message = {"role": "user", "content": text}
+            st.session_state.messages.append(user_message)
+            st.write(user_message["content"])
 
-    if "vectors" in st.session_state and st.session_state.vectors is not None:
-        try:
-            response = process_input(
-                voice_input,
-                st.session_state.vectors.as_retriever(),
-                llm,
-                st.session_state.memory
-            )
-            
-            if response:
-                assistant_message = {
-                    "role": "assistant",
-                    "content": response["answer"],
-                    "references": {"context": response["context"]}
-                }
-                st.session_state.messages.append(assistant_message)
-                st.session_state.memory.chat_memory.add_user_message(voice_input)
-                st.session_state.memory.chat_memory.add_ai_message(response["answer"])
+            if "vectors" in st.session_state and st.session_state.vectors is not None:
+                response = process_input(text, st.session_state.vectors, llm, st.session_state.memory)
+                if response:
+                    assistant_message = {
+                        "role": "assistant",
+                        "content": response["answer"],
+                        "references": response
+                    }
+                    st.session_state.messages.append(assistant_message)
+                    display_response_with_references(response)
+    except Exception as e:
+        st.error(f"Error processing voice input: {str(e)}")
 
-                # عرض الرد مع المراجع والصور
-                display_response_with_references(response, response["answer"])
-        except Exception as e:
-            st.error(f"حدث خطأ: {str(e)}")
+st.title("Basrah Gas Company Assistant - مساعد شركة غاز البصرة")
