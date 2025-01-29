@@ -237,13 +237,6 @@ if 'messages' not in st.session_state:
 if 'chat_memories' not in st.session_state:
     st.session_state.chat_memories = {}
 
-# Migrate existing chats to include new fields
-for chat_id, chat_data in st.session_state.chat_history.items():
-    if 'visible' not in chat_data:
-        chat_data['visible'] = len(chat_data['messages']) > 0
-    if 'first_message' not in chat_data:
-        chat_data['first_message'] = UI_TEXTS[interface_language]['new_chat'] if not chat_data['messages'] else chat_data['messages'][0]['content']
-
 def create_new_chat():
     """إنشاء محادثة جديدة مستقلة تماماً"""
     chat_id = datetime.now().strftime('%Y%m%d_%H%M%S')
@@ -335,7 +328,7 @@ with st.sidebar:
     chats_by_date = {}
     for chat_id, chat_data in st.session_state.chat_history.items():
         # Only show chats that have messages and are marked as visible
-        if chat_data.get('visible', False) and chat_data['messages']:
+        if chat_data['visible'] and chat_data['messages']:
             date = chat_data['timestamp'].date()
             if date not in chats_by_date:
                 chats_by_date[date] = []
