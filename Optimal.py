@@ -249,11 +249,13 @@ def create_new_chat():
         return_messages=True
     )
     
+    # Initialize chat but don't show in history until first message
     if chat_id not in st.session_state.chat_history:
         st.session_state.chat_history[chat_id] = {
             'messages': [],
             'timestamp': datetime.now(),
-            'first_message': UI_TEXTS[interface_language]['new_chat']
+            'first_message': None,  # Start with no title
+            'visible': False  # Hide from chat list initially
         }
     st.rerun()
     return chat_id
@@ -325,10 +327,12 @@ with st.sidebar:
     # Group chats by date
     chats_by_date = {}
     for chat_id, chat_data in st.session_state.chat_history.items():
-        date = chat_data['timestamp'].date()
-        if date not in chats_by_date:
-            chats_by_date[date] = []
-        chats_by_date[date].append((chat_id, chat_data))
+        # Only show chats that have messages and are marked as visible
+        if chat_data['visible'] and chat_data['messages']:
+            date = chat_data['timestamp'].date()
+            if date not in chats_by_date:
+                chats_by_date[date] = []
+            chats_by_date[date].append((chat_id, chat_data))
     
     # Display chats grouped by date
     for date in sorted(chats_by_date.keys(), reverse=True):
@@ -349,9 +353,21 @@ with st.sidebar:
 def process_user_input(user_input, is_first_message=False):
     """معالجة إدخال المستخدم وإنشاء الرد"""
     try:
-        # Get the current chat's memory
         current_chat_id = st.session_state.current_chat_id
         current_memory = st.session_state.chat_memories.get(current_chat_id)
+        
+        # Add user message to chat history
+        user_message = {"role": "user", "content": user_input}
+        st.session_state.messages.append(user_message)
+        
+        # If this is the first message in a chat, use it as the chat title
+        if is_first_message or (current_chat_id in st.session_state.chat_history and 
+                              not st.session_state.chat_history[current_chat_id]['messages']):
+            # Clean and truncate the message for title
+            title = user_input.strip().replace('\n', ' ')
+            title = title[:50] + '...' if len(title) > 50 else title
+            st.session_state.chat_history[current_chat_id]['first_message'] = title
+            st.session_state.chat_history[current_chat_id]['visible'] = True
         
         # تحضير السياق من الملفات PDF
         context = get_relevant_context(query=user_input)
@@ -360,20 +376,32 @@ def process_user_input(user_input, is_first_message=False):
         response = create_chat_response(
             user_input,
             context,
-            current_memory,  # Use the current chat's memory
+            current_memory,
             interface_language
         )
         
-        # إضافة الإجابة إلى سجل المحادثة
-        assistant_message = {
-            "role": "assistant",
-            "content": response["answer"],
-            "references": response.get("references", [])
-        }
-        st.session_state.messages.append(assistant_message)
+        # Check if the response contains any negative phrases
+        if any(phrase in response["answer"].lower() for phrase in negative_phrases):
+            # For unclear questions, only show response if it's not the first message
+            if not is_first_message:
+                assistant_message = {
+                    "role": "assistant",
+                    "content": response["answer"]
+                }
+                st.session_state.messages.append(assistant_message)
+        else:
+            # For clear questions, show response with references
+            assistant_message = {
+                "role": "assistant",
+                "content": response["answer"],
+                "references": response.get("references", [])
+            }
+            st.session_state.messages.append(assistant_message)
+        
+        # Update chat history
         st.session_state.chat_history[current_chat_id]['messages'] = st.session_state.messages
         
-        # عرض الإجابة مع المراجع
+        # Display the response
         display_response_with_references(response, response["answer"])
         
         if is_first_message:
