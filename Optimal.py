@@ -266,7 +266,6 @@ with col1:
 # Display the title and description in the second column
 with col2:
     if interface_language == "العربية":
-        st.title("محمد الياسين | بوت الدردشة BGC")
         st.write("""
         **مرحبًا!**  
         هذا بوت الدردشة الخاص بشركة غاز البصرة (BGC). يمكنك استخدام هذا البوت للحصول على معلومات حول الشركة وأنشطتها.  
@@ -276,7 +275,6 @@ with col2:
         - سيتم الرد عليك بناءً على المعلومات المتاحة.  
         """)
     else:
-        st.title("Mohammed Al-Yaseen | BGC ChatBot")
         st.write("""
         **Welcome!**  
         This is the Basrah Gas Company (BGC) ChatBot. You can use this bot to get information about the company and its activities.  
@@ -445,35 +443,90 @@ def display_response_with_references(response_data):
     else:
         st.write(response_data)
 
-# عرض سجل المحادثة
-for message in st.session_state.messages:
-    if message["role"] == "assistant" and "references" in message:
-        display_response_with_references(message["references"])
-    else:
-        st.write(message["content"])
+# إضافة CSS لتثبيت حقل الإدخال في الأسفل
+st.markdown("""
+<style>
+    /* تنسيق حاوية الإدخال */
+    .input-container {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background-color: white;
+        padding: 1rem;
+        box-shadow: 0 -2px 10px rgba(0,0,0,0.1);
+        z-index: 1000;
+    }
+    
+    /* تنسيق حقل الإدخال */
+    .stTextInput {
+        margin-bottom: 0 !important;
+    }
+    
+    /* تنسيق زر التسجيل */
+    .stMicRecorder {
+        margin-top: 0 !important;
+    }
+    
+    /* إضافة مساحة في الأسفل لمنع تداخل المحتوى مع حقل الإدخال */
+    .main .block-container {
+        padding-bottom: 100px;
+    }
+    
+    /* تنسيق الرسائل */
+    .message {
+        margin-bottom: 1rem;
+        padding: 1rem;
+        border-radius: 0.5rem;
+    }
+    
+    /* إخفاء عناصر Streamlit غير الضرورية */
+    #MainMenu, header, footer {
+        display: none !important;
+    }
+</style>
+""", unsafe_allow_html=True)
 
-# حقل إدخال النص
-if interface_language == "العربية":
-    human_input = st.text_input("اكتب سؤالك هنا...")
-else:
-    human_input = st.text_input("Type your question here...")
+# عرض سجل المحادثة في الأعلى
+messages_container = st.container()
+with messages_container:
+    for message in st.session_state.messages:
+        if "references" in message:
+            display_response_with_references(message["references"])
+        else:
+            st.markdown(f'<div class="message">{message["content"]}</div>', unsafe_allow_html=True)
+
+# إضافة مسافة لفصل المحادثة عن حقل الإدخال
+st.markdown("<div style='height: 80px'></div>", unsafe_allow_html=True)
+
+# إنشاء حاوية ثابتة في الأسفل
+input_container = st.container()
+with input_container:
+    st.markdown('<div class="input-container">', unsafe_allow_html=True)
+    cols = st.columns([6, 1])
+    
+    with cols[0]:
+        # حقل إدخال النص
+        human_input = st.text_input(
+            "",
+            placeholder="اكتب سؤالك هنا...",
+            key="chat_input"
+        )
+    
+    with cols[1]:
+        # زر التسجيل الصوتي
+        voice_input = st_mic_recorder()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
 
 # معالجة الإدخال النصي
 if human_input:
     user_message = {"role": "user", "content": human_input}
     st.session_state.messages.append(user_message)
-    st.write(user_message["content"])
-
+    
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         try:
-            # معالجة الإدخال مع التحسينات الجديدة
-            response = process_input(
-                human_input,
-                st.session_state.vectors.as_retriever(),
-                llm,
-                st.session_state.memory
-            )
-            
+            response = process_input(human_input, st.session_state.vectors, llm, st.session_state.memory)
             if response:
                 assistant_message = {
                     "role": "assistant",
@@ -481,20 +534,18 @@ if human_input:
                     "references": response
                 }
                 st.session_state.messages.append(assistant_message)
-                display_response_with_references(response)
+                st.experimental_rerun()
         except Exception as e:
             st.error(f"حدث خطأ: {str(e)}")
 
-# معالجة الإدخال الصوتي بنفس الطريقة
+# معالجة الإدخال الصوتي
 if voice_input:
-    # تحويل الصوت إلى نص مع الكشف التلقائي عن اللغة
     try:
         text = speech_to_text(voice_input)
         if text:
             user_message = {"role": "user", "content": text}
             st.session_state.messages.append(user_message)
-            st.write(user_message["content"])
-
+            
             if "vectors" in st.session_state and st.session_state.vectors is not None:
                 response = process_input(text, st.session_state.vectors, llm, st.session_state.memory)
                 if response:
@@ -504,8 +555,6 @@ if voice_input:
                         "references": response
                     }
                     st.session_state.messages.append(assistant_message)
-                    display_response_with_references(response)
+                    st.experimental_rerun()
     except Exception as e:
         st.error(f"Error processing voice input: {str(e)}")
-
-st.title("Basrah Gas Company Assistant - مساعد شركة غاز البصرة")
