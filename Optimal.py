@@ -44,6 +44,44 @@ def apply_css_direction(direction):
         unsafe_allow_html=True,
     )
 
+# تعريف النصوص حسب اللغة
+UI_TEXTS = {
+    "العربية": {
+        "page": "صفحة",
+        "error_pdf": "حدث خطأ أثناء معالجة ملف PDF: ",
+        "error_question": "حدث خطأ أثناء معالجة السؤال: ",
+        "input_placeholder": "اكتب سؤالك هنا...",
+        "source": "المصدر",
+        "page_number": "صفحة رقم",
+        "welcome_title": "محمد الياسين | بوت الدردشة BGC",
+        "welcome_message": """
+        **مرحبًا!**  
+        هذا بوت الدردشة الخاص بشركة غاز البصرة (BGC). يمكنك استخدام هذا البوت للحصول على معلومات حول الشركة وأنشطتها.  
+        
+        **كيفية الاستخدام:**  
+        - اكتب سؤالك في الأسفل أو استخدم الميكروفون للتحدث.  
+        - سيتم الرد عليك بناءً على المعلومات المتاحة.  
+        """
+    },
+    "English": {
+        "page": "Page",
+        "error_pdf": "Error processing PDF file: ",
+        "error_question": "Error processing question: ",
+        "input_placeholder": "Type your question here...",
+        "source": "Source",
+        "page_number": "Page number",
+        "welcome_title": "Mohammed Al-Yaseen | BGC ChatBot",
+        "welcome_message": """
+        **Welcome!**  
+        This is the Basrah Gas Company (BGC) ChatBot. You can use this bot to get information about the company and its activities.  
+        
+        **How to use:**  
+        - Type your question below or use the microphone to speak.  
+        - You will receive answers based on available information.  
+        """
+    }
+}
+
 # PDF Search and Screenshot Class
 class PDFSearchAndDisplay:
     def __init__(self):
@@ -66,7 +104,7 @@ class PDFSearchAndDisplay:
                     screenshots.append(pix.tobytes())
             doc.close()
         except Exception as e:
-            st.error(f"حدث خطأ أثناء معالجة ملف PDF: {str(e)}")
+            st.error(f"{UI_TEXTS[interface_language]['error_pdf']}{str(e)}")
         return screenshots
 
 # Sidebar configuration
@@ -175,26 +213,8 @@ with col1:
 
 # Display the title and description in the second column
 with col2:
-    if interface_language == "العربية":
-        st.title("محمد الياسين | بوت الدردشة BGC")
-        st.write("""
-        **مرحبًا!**  
-        هذا بوت الدردشة الخاص بشركة غاز البصرة (BGC). يمكنك استخدام هذا البوت للحصول على معلومات حول الشركة وأنشطتها.  
-        **كيفية الاستخدام:**  
-        - اكتب سؤالك في مربع النص أدناه.  
-        - أو استخدم زر المايكروفون للتحدث مباشرة.  
-        - سيتم الرد عليك بناءً على المعلومات المتاحة.  
-        """)
-    else:
-        st.title("Mohammed Al-Yaseen | BGC ChatBot")
-        st.write("""
-        **Welcome!**  
-        This is the Basrah Gas Company (BGC) ChatBot. You can use this bot to get information about the company and its activities.  
-        **How to use:**  
-        - Type your question in the text box below.  
-        - Or use the microphone button to speak directly.  
-        - You will receive a response based on the available information.  
-        """)
+    st.title(UI_TEXTS[interface_language]['welcome_title'])
+    st.write(UI_TEXTS[interface_language]['welcome_message'])
 
 # Initialize session state for chat messages if not already done
 if "messages" not in st.session_state:
@@ -309,7 +329,6 @@ def get_relevant_context(retriever, query, k=3):
     return organized_context
 
 def process_input(input_text, retriever, llm, memory):
-    """معالجة إدخال المستخدم مع تحسين جودة الإجابات والسياق"""
     try:
         # الحصول على السياق المنظم
         context = get_relevant_context(retriever, input_text)
@@ -336,7 +355,7 @@ def process_input(input_text, retriever, llm, memory):
         return organized_response
         
     except Exception as e:
-        st.error(f"حدث خطأ أثناء معالجة السؤال: {str(e)}")
+        st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
         return None
 
 def display_references(refs):
@@ -360,7 +379,7 @@ def display_references(refs):
                     screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
                     if screenshots:
                         st.image(screenshots[0], use_container_width=True)
-                        st.markdown(f"**صفحة {page_num}**")
+                        st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
 
 def display_chat_message(message, with_refs=False):
     with st.chat_message(message["role"]):
@@ -392,10 +411,7 @@ for message in st.session_state.messages:
         display_chat_message(message)
 
 # حقل إدخال النص
-if interface_language == "العربية":
-    human_input = st.chat_input("اكتب سؤالك هنا...")
-else:
-    human_input = st.chat_input("Type your question here...")
+human_input = st.chat_input(UI_TEXTS[interface_language]['input_placeholder'])
 
 # معالجة الإدخال النصي
 if human_input:
