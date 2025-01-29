@@ -410,74 +410,38 @@ def extract_complete_sentences(text, max_length=200):
             
     return ' '.join(complete_text)
 
-def get_relevant_context(retriever, query, k=3):
-    """الحصول على السياق الأكثر صلة وتنظيمه"""
-    # استرجاع المستندات ذات الصلة
-    docs = retriever.get_relevant_documents(query)
-    
-    # تنظيم وتنقية السياق
-    organized_context = []
-    for doc in docs[:k]:  # استخدام أفضل k مستندات فقط
-        text = clean_text(doc.page_content)
-        complete_text = extract_complete_sentences(text)
-        if complete_text:
-            # إنشاء وثيقة جديدة مع النص المنظم
-            organized_doc = Document(
-                page_content=complete_text,
-                metadata={"page": doc.metadata.get("page", "unknown")}
-            )
-            organized_context.append(organized_doc)
-    
-    return organized_context
-
-def display_references(refs):
-    """عرض المراجع والصور من ملفات PDF"""
-    if refs and isinstance(refs, dict) and "references" in refs:
-        page_info = []
-        for ref in refs["references"]:
-            if "page" in ref and ref["page"] is not None:
-                page_info.append(ref["page"])
-
-        if page_info:
-            with st.expander(UI_TEXTS[interface_language]["page_references"]):
-                cols = st.columns(2)
-                for idx, page_num in enumerate(sorted(set(page_info))):
-                    col_idx = idx % 2
-                    with cols[col_idx]:
-                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
-                        if screenshots:
-                            st.image(screenshots[0], use_container_width=True)
-                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
-
-def display_chat_message(message, with_refs=False):
-    """عرض رسالة المحادثة"""
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if with_refs and "references" in message:
-            display_references(message)
-
-def display_response_with_references(response, answer):
-    """عرض الإجابة مع المراجع"""
-    if not any(phrase in answer.lower() for phrase in negative_phrases):
-        # إضافة المراجع إلى الرسالة
-        message = {
-            "role": "assistant",
-            "content": answer,
-            "references": response
-        }
-        display_chat_message(message, with_refs=True)
-    else:
-        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
-        display_chat_message({
-            "role": "assistant",
-            "content": answer
-        })
+def get_relevant_context(query, retriever=None):
+    """الحصول على السياق المناسب من الملفات PDF"""
+    try:
+        if retriever is None and "vectors" in st.session_state:
+            retriever = st.session_state.vectors.as_retriever()
+            
+        if retriever:
+            # البحث عن المستندات ذات الصلة
+            docs = retriever.get_relevant_documents(query)
+            
+            # تنظيم السياق
+            organized_context = []
+            for doc in docs:
+                organized_context.append({
+                    "content": doc.page_content,
+                    "page": doc.metadata.get("page", None),
+                    "source": doc.metadata.get("source", None)
+                })
+            
+            return {"references": organized_context}
+        
+        return {"references": []}
+            
+    except Exception as e:
+        st.error(f"Error getting context: {str(e)}")
+        return {"references": []}
 
 def process_user_input(user_input, is_first_message=False):
     """معالجة إدخال المستخدم وإنشاء الرد"""
     try:
         # تحضير السياق من الملفات PDF
-        context = get_relevant_context(user_input)
+        context = get_relevant_context(query=user_input)
         
         # إنشاء الإجابة باستخدام OpenAI
         response = create_chat_response(
@@ -559,3 +523,46 @@ if voice_input:
 # Create new chat if no chat is selected
 if st.session_state.current_chat_id is None:
     create_new_chat()
+
+def display_references(refs):
+    """عرض المراجع والصور من ملفات PDF"""
+    if refs and isinstance(refs, dict) and "references" in refs:
+        page_info = []
+        for ref in refs["references"]:
+            if "page" in ref and ref["page"] is not None:
+                page_info.append(ref["page"])
+
+        if page_info:
+            with st.expander(UI_TEXTS[interface_language]["page_references"]):
+                cols = st.columns(2)
+                for idx, page_num in enumerate(sorted(set(page_info))):
+                    col_idx = idx % 2
+                    with cols[col_idx]:
+                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
+                        if screenshots:
+                            st.image(screenshots[0], use_container_width=True)
+                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
+
+def display_chat_message(message, with_refs=False):
+    """عرض رسالة المحادثة"""
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if with_refs and "references" in message:
+            display_references(message)
+
+def display_response_with_references(response, answer):
+    """عرض الإجابة مع المراجع"""
+    if not any(phrase in answer.lower() for phrase in negative_phrases):
+        # إضافة المراجع إلى الرسالة
+        message = {
+            "role": "assistant",
+            "content": answer,
+            "references": response
+        }
+        display_chat_message(message, with_refs=True)
+    else:
+        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
+        display_chat_message({
+            "role": "assistant",
+            "content": answer
+        })
