@@ -3,10 +3,11 @@ import streamlit as st
 import os
 from importlib import import_module
 from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.chat_models import ChatGroq
-from langchain.embeddings import GoogleGenerativeAIEmbeddings
+from langchain_groq import ChatGroq
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.vectorstores.faiss import FAISS
 from streamlit_mic_recorder import speech_to_text
+from langchain.memory import ConversationBufferMemory
 
 # تهيئة مفاتيح API
 groq_api_key = "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"
@@ -20,7 +21,7 @@ if "messages" not in st.session_state:
     st.session_state.messages = []
 
 if "memory" not in st.session_state:
-    st.session_state.memory = None
+    st.session_state.memory = ConversationBufferMemory(return_messages=False)
 
 # تحديث إعدادات الصفحة
 st.set_page_config(
@@ -312,7 +313,7 @@ if "messages" not in st.session_state:
 
 # Initialize memory if not already done
 if "memory" not in st.session_state:
-    st.session_state.memory = None
+    st.session_state.memory = ConversationBufferMemory(return_messages=False)
 
 # List of negative phrases to check for unclear or insufficient answers
 negative_phrases = [
