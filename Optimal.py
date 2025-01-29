@@ -54,6 +54,7 @@ UI_TEXTS = {
         "source": "المصدر",
         "page_number": "صفحة رقم",
         "welcome_title": "محمد الياسين | بوت الدردشة BGC",
+        "page_references": "مراجع الصفحات",
         "welcome_message": """
         **مرحبًا!**  
         هذا بوت الدردشة الخاص بشركة غاز البصرة (BGC). يمكنك استخدام هذا البوت للحصول على معلومات حول الشركة وأنشطتها.  
@@ -71,6 +72,7 @@ UI_TEXTS = {
         "source": "Source",
         "page_number": "Page number",
         "welcome_title": "Mohammed Al-Yaseen | BGC ChatBot",
+        "page_references": "Page References",
         "welcome_message": """
         **Welcome!**  
         This is the Basrah Gas Company (BGC) ChatBot. You can use this bot to get information about the company and its activities.  
@@ -360,26 +362,23 @@ def process_input(input_text, retriever, llm, memory):
 
 def display_references(refs):
     if refs and "context" in refs:
-        # استخراج أرقام الصفحات فقط
         page_info = []
         for doc in refs["context"]:
             page_number = doc.metadata.get("page", "unknown")
             if page_number != "unknown" and str(page_number).isdigit():
                 page_info.append(int(page_number))
 
-        # عرض الصور
         if page_info:
-            # إنشاء عمودين لعرض الصور
-            cols = st.columns(2)
-            
-            # التقاط وعرض لقطات الشاشة للصفحات
-            for idx, page_num in enumerate(sorted(set(page_info))):
-                col_idx = idx % 2
-                with cols[col_idx]:
-                    screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
-                    if screenshots:
-                        st.image(screenshots[0], use_container_width=True)
-                        st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
+            with st.expander(UI_TEXTS[interface_language]["page_references"]):
+                cols = st.columns(2)
+                
+                for idx, page_num in enumerate(sorted(set(page_info))):
+                    col_idx = idx % 2
+                    with cols[col_idx]:
+                        screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, "")])
+                        if screenshots:
+                            st.image(screenshots[0], use_container_width=True)
+                            st.markdown(f"**{UI_TEXTS[interface_language]['page']} {page_num}**")
 
 def display_chat_message(message, with_refs=False):
     with st.chat_message(message["role"]):
