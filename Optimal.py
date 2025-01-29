@@ -509,10 +509,9 @@ if human_input:
     user_message = {"role": "user", "content": human_input}
     st.session_state.messages.append(user_message)
     
-    # تحديث موضوع المحادثة إذا كانت أول رسالة
+    # حفظ أول رسالة في المحادثة
     if not st.session_state.chat_history[st.session_state.current_chat_id]['first_message']:
         st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = human_input
-        update_chat_topic(human_input)
     
     # تحديث سجل المحادثة
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
@@ -548,10 +547,9 @@ if voice_input:
     user_message = {"role": "user", "content": voice_input}
     st.session_state.messages.append(user_message)
     
-    # تحديث موضوع المحادثة إذا كانت أول رسالة
+    # حفظ أول رسالة في المحادثة
     if not st.session_state.chat_history[st.session_state.current_chat_id]['first_message']:
         st.session_state.chat_history[st.session_state.current_chat_id]['first_message'] = voice_input
-        update_chat_topic(voice_input)
     
     # تحديث سجل المحادثة
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
