@@ -257,53 +257,78 @@ negative_phrases = [
     "هل يمكنك تقديم المزيد"  # إضافة هذه العبارة
 ]
 
-# Function to display response with references and screenshots
+# تحديث دالة عرض المحادثة
+def display_chat_message(message, with_refs=False):
+    with st.chat_message(message["role"]):
+        st.markdown(message["content"])
+        if with_refs and "references" in message:
+            display_references(message["references"])
+
+# دالة عرض المراجع والصور
+def display_references(refs):
+    if refs and "context" in refs:
+        # استخراج أرقام الصفحات الفريدة من السياق
+        page_numbers = set()
+        for doc in refs["context"]:
+            page_number = doc.metadata.get("page", "unknown")
+            if page_number != "unknown" and str(page_number).isdigit():
+                page_numbers.add(int(page_number))
+
+        # عرض أرقام الصفحات
+        if page_numbers:
+            sorted_pages = sorted(page_numbers)
+            page_numbers_str = ", ".join(map(str, sorted_pages))
+            st.markdown("---")
+            st.markdown(
+                f"**{'المصدر' if interface_language == 'العربية' else 'Source'}:** " +
+                f"{'صفحة رقم' if interface_language == 'العربية' else 'Page'} {page_numbers_str}"
+            )
+
+            # إنشاء عمودين لعرض الصور
+            cols = st.columns(2)  # عمودان فقط
+            
+            # التقاط وعرض لقطات الشاشة للصفحات ذات الصلة
+            for idx, page_num in enumerate(sorted_pages):
+                col_idx = idx % 2  # تحديد رقم العمود (0 أو 1)
+                with cols[col_idx]:
+                    highlighted_pages = [(page_num, "")]
+                    screenshots = pdf_searcher.capture_screenshots(pdf_path, highlighted_pages)
+                    if screenshots:
+                        # عرض الصورة بحجم مناسب
+                        st.image(
+                            screenshots[0],
+                            use_container_width=True,
+                            width=300  # عرض أكبر قليلاً لأن لدينا عمودين فقط
+                        )
+                        # عرض رقم الصفحة أسفل الصورة
+                        st.markdown(
+                            f"<div style='text-align: center;'><p><strong>{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}</strong></p></div>",
+                            unsafe_allow_html=True
+                        )
+
+# تحديث دالة عرض الرد مع المراجع
 def display_response_with_references(response, assistant_response):
-    with st.chat_message("assistant"):
-        # Display assistant's response
-        st.markdown(assistant_response)
-        
-        # Display references and screenshots if the response does not contain any negative phrases
-        if not any(phrase in assistant_response for phrase in negative_phrases):
-            if "context" in response:
-                # Extract unique page numbers from the context
-                page_numbers = set()
-                for doc in response["context"]:
-                    page_number = doc.metadata.get("page", "unknown")
-                    if page_number != "unknown" and str(page_number).isdigit():
-                        page_numbers.add(int(page_number))
+    if not any(phrase in assistant_response for phrase in negative_phrases):
+        # إضافة المراجع إلى الرسالة
+        message = {
+            "role": "assistant",
+            "content": assistant_response,
+            "references": response
+        }
+        display_chat_message(message, with_refs=True)
+    else:
+        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
+        display_chat_message({
+            "role": "assistant",
+            "content": assistant_response
+        })
 
-                # Display page numbers
-                if page_numbers:
-                    sorted_pages = sorted(page_numbers)
-                    page_numbers_str = ", ".join(map(str, sorted_pages))
-                    st.markdown("---")
-                    st.markdown(
-                        f"**{'المصدر' if interface_language == 'العربية' else 'Source'}:** " +
-                        f"{'صفحة رقم' if interface_language == 'العربية' else 'Page'} {page_numbers_str}"
-                    )
-
-                    # Create columns to display images
-                    cols = st.columns(min(3, len(sorted_pages)))  # Display up to 3 images per row
-                    
-                    # Capture and display screenshots of the relevant pages
-                    for idx, page_num in enumerate(sorted_pages):
-                        col_idx = idx % 3  # Determine column index
-                        with cols[col_idx]:
-                            highlighted_pages = [(page_num, "")]
-                            screenshots = pdf_searcher.capture_screenshots(pdf_path, highlighted_pages)
-                            if screenshots:
-                                # Display the image with a smaller size
-                                st.image(
-                                    screenshots[0],
-                                    use_container_width=True,
-                                    width=250  # Set a fixed width for the image
-                                )
-                                # Display the page number below the image
-                                st.markdown(
-                                    f"<div style='text-align: center;'><p><strong>{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}</strong></p></div>",
-                                    unsafe_allow_html=True
-                                )
+# عرض سجل المحادثة
+for message in st.session_state.messages:
+    if message["role"] == "assistant" and "references" in message:
+        display_chat_message(message, with_refs=True)
+    else:
+        display_chat_message(message)
 
 # حقل إدخال النص
 if interface_language == "العربية":
@@ -311,16 +336,11 @@ if interface_language == "العربية":
 else:
     human_input = st.chat_input("Type your question here...")
 
-# عرض سجل المحادثة
-for message in st.session_state.messages:
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-
 # معالجة الإدخال الصوتي
 if voice_input:
-    st.session_state.messages.append({"role": "user", "content": voice_input})
-    with st.chat_message("user"):
-        st.markdown(voice_input)
+    user_message = {"role": "user", "content": voice_input}
+    st.session_state.messages.append(user_message)
+    display_chat_message(user_message)
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         retriever = st.session_state.vectors.as_retriever()
@@ -331,28 +351,24 @@ if voice_input:
         })
         assistant_response = response["answer"]
 
-        # حفظ الرسائل في الذاكرة
-        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+        # حفظ الرسائل في الذاكرة مع المراجع
+        assistant_message = {
+            "role": "assistant",
+            "content": assistant_response,
+            "references": response
+        }
+        st.session_state.messages.append(assistant_message)
         st.session_state.memory.chat_memory.add_user_message(voice_input)
         st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
         # عرض الرد مع المراجع والصور
         display_response_with_references(response, assistant_response)
-    else:
-        # رسالة خطأ إذا لم يتم تحميل التضميدات
-        assistant_response = (
-            "لم يتم تحميل التضميدات. يرجى التحقق مما إذا كان مسار التضميدات صحيحًا." if interface_language == "العربية" 
-            else "Embeddings not loaded. Please check if the embeddings path is correct."
-        )
-        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
-        with st.chat_message("assistant"):
-            st.markdown(assistant_response)
 
 # معالجة الإدخال النصي
 if human_input:
-    st.session_state.messages.append({"role": "user", "content": human_input})
-    with st.chat_message("user"):
-        st.markdown(human_input)
+    user_message = {"role": "user", "content": human_input}
+    st.session_state.messages.append(user_message)
+    display_chat_message(user_message)
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         retriever = st.session_state.vectors.as_retriever()
@@ -363,19 +379,15 @@ if human_input:
         })
         assistant_response = response["answer"]
 
-        # حفظ الرسائل في الذاكرة
-        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
+        # حفظ الرسائل في الذاكرة مع المراجع
+        assistant_message = {
+            "role": "assistant",
+            "content": assistant_response,
+            "references": response
+        }
+        st.session_state.messages.append(assistant_message)
         st.session_state.memory.chat_memory.add_user_message(human_input)
         st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
         # عرض الرد مع المراجع والصور
         display_response_with_references(response, assistant_response)
-    else:
-        # رسالة خطأ إذا لم يتم تحميل التضميدات
-        assistant_response = (
-            "لم يتم تحميل التضميدات. يرجى التحقق مما إذا كان مسار التضميدات صحيحًا." if interface_language == "العربية" 
-            else "Embeddings not loaded. Please check if the embeddings path is correct."
-        )
-        st.session_state.messages.append({"role": "assistant", "content": assistant_response})
-        with st.chat_message("assistant"):
-            st.markdown(assistant_response)
