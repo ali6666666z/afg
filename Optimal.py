@@ -8,7 +8,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import Document
 from langchain.prompts import PromptTemplate
-from streamlit_mic_recorder import speech_to_text  # Import speech-to-text function
+from streamlit_mic_recorder import mic_recorder  # إضافة استيراد المكتبة
 import fitz  # PyMuPDF for capturing screenshots
 import pdfplumber  # For searching text in PDF
 from datetime import datetime, timedelta
@@ -292,13 +292,12 @@ with st.sidebar:
         # Microphone button in the sidebar
         st.markdown("### الإدخال الصوتي" if interface_language == "العربية" else "### Voice Input")
         input_lang_code = "ar" if interface_language == "العربية" else "en"  # Set language code based on interface language
-        voice_input = speech_to_text(
+        voice_input = mic_recorder(
             start_prompt="🎤",
-            stop_prompt="⏹️ إيقاف" if interface_language == "العربية" else "⏹️ Stop",
-            language=input_lang_code,  # Language (en for English, ar for Arabic)
-            use_container_width=True,
+            stop_prompt="⏹️",
             just_once=True,
-            key="mic_button",
+            use_container_width=True,
+            key="voice_recorder"
         )
 
         # Reset button in the sidebar
@@ -487,7 +486,13 @@ with cols[0]:
     human_input = st.text_input("", placeholder=UI_TEXTS[interface_language]['input_placeholder'], key="chat_input")
 
 with cols[1]:
-    voice_input = st_mic_recorder()
+    voice_input = mic_recorder(
+        start_prompt="🎤",
+        stop_prompt="⏹️",
+        just_once=True,
+        use_container_width=True,
+        key="voice_recorder"
+    )
 
 st.markdown('</div>', unsafe_allow_html=True)
 
