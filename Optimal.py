@@ -468,17 +468,31 @@ def process_input(input_text, retriever, llm, memory):
 
 def display_response_with_references(response_data):
     """عرض الإجابة مع المراجع والصور"""
-    if response_data:
-        # عرض الإجابة
-        st.write(response_data["answer"])
+    if not response_data:
+        return
+        
+    # عرض الإجابة
+    if isinstance(response_data, dict):
+        # إذا كان الرد يحتوي على مفتاح 'answer'
+        if "answer" in response_data:
+            st.write(response_data["answer"])
+        # إذا كان الرد يحتوي على مفتاح 'content'
+        elif "content" in response_data:
+            st.write(response_data["content"])
         
         # عرض الصور والصفحات
-        if "context" in response_data and response_data["context"]:
+        context_data = None
+        if "context" in response_data:
+            context_data = response_data["context"]
+        elif "references" in response_data and isinstance(response_data["references"], dict):
+            context_data = response_data["references"].get("context")
+        
+        if context_data:
             st.markdown("### الصور المرجعية")
             
             # تجميع الصور والصفحات
             images_data = []
-            for doc in response_data["context"]:
+            for doc in context_data:
                 page_num = doc.metadata.get("page", "غير معروف")
                 try:
                     # التقاط لقطة من الصفحة
@@ -495,6 +509,9 @@ def display_response_with_references(response_data):
                     with cols[idx % 2]:
                         st.image(image)
                         st.markdown(f"**صفحة {page_num}**", help="رقم الصفحة في المستند")
+    else:
+        # إذا كان الرد نصاً عادياً
+        st.write(response_data)
 
 # عرض سجل المحادثة
 for message in st.session_state.messages:
