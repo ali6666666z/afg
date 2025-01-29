@@ -7,6 +7,7 @@ from langchain.chains import create_retrieval_chain
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.memory import ConversationBufferMemory
+from langchain.schema import Document
 from streamlit_mic_recorder import speech_to_text  # Import speech-to-text function
 import fitz  # PyMuPDF for capturing screenshots
 import pdfplumber  # For searching text in PDF
@@ -386,10 +387,12 @@ def get_relevant_context(retriever, query, k=3):
         text = clean_text(doc.page_content)
         complete_text = extract_complete_sentences(text)
         if complete_text:
-            organized_context.append({
-                "page_content": complete_text,
-                "metadata": {"page": doc.metadata.get("page", "unknown")}
-            })
+            # إنشاء وثيقة جديدة مع النص المنظم
+            organized_doc = Document(
+                page_content=complete_text,
+                metadata={"page": doc.metadata.get("page", "unknown")}
+            )
+            organized_context.append(organized_doc)
     
     return organized_context
 
@@ -507,26 +510,29 @@ if human_input:
     display_chat_message(user_message)
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
-        # معالجة الإدخال مع التحسينات الجديدة
-        response = process_input(
-            human_input,
-            st.session_state.vectors.as_retriever(),
-            llm,
-            st.session_state.memory
-        )
-        
-        if response:
-            assistant_message = {
-                "role": "assistant",
-                "content": response["answer"],
-                "references": {"context": response["context"]}
-            }
-            st.session_state.messages.append(assistant_message)
-            st.session_state.memory.chat_memory.add_user_message(human_input)
-            st.session_state.memory.chat_memory.add_ai_message(response["answer"])
+        try:
+            # معالجة الإدخال مع التحسينات الجديدة
+            response = process_input(
+                human_input,
+                st.session_state.vectors.as_retriever(),
+                llm,
+                st.session_state.memory
+            )
+            
+            if response:
+                assistant_message = {
+                    "role": "assistant",
+                    "content": response["answer"],
+                    "references": {"context": response["context"]}
+                }
+                st.session_state.messages.append(assistant_message)
+                st.session_state.memory.chat_memory.add_user_message(human_input)
+                st.session_state.memory.chat_memory.add_ai_message(response["answer"])
 
-            # عرض الرد مع المراجع والصور
-            display_response_with_references(response, response["answer"])
+                # عرض الرد مع المراجع والصور
+                display_response_with_references(response, response["answer"])
+        except Exception as e:
+            st.error(f"حدث خطأ: {str(e)}")
 
 # معالجة الإدخال الصوتي بنفس الطريقة
 if voice_input:
@@ -535,22 +541,25 @@ if voice_input:
     display_chat_message(user_message)
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
-        response = process_input(
-            voice_input,
-            st.session_state.vectors.as_retriever(),
-            llm,
-            st.session_state.memory
-        )
-        
-        if response:
-            assistant_message = {
-                "role": "assistant",
-                "content": response["answer"],
-                "references": {"context": response["context"]}
-            }
-            st.session_state.messages.append(assistant_message)
-            st.session_state.memory.chat_memory.add_user_message(voice_input)
-            st.session_state.memory.chat_memory.add_ai_message(response["answer"])
+        try:
+            response = process_input(
+                voice_input,
+                st.session_state.vectors.as_retriever(),
+                llm,
+                st.session_state.memory
+            )
+            
+            if response:
+                assistant_message = {
+                    "role": "assistant",
+                    "content": response["answer"],
+                    "references": {"context": response["context"]}
+                }
+                st.session_state.messages.append(assistant_message)
+                st.session_state.memory.chat_memory.add_user_message(voice_input)
+                st.session_state.memory.chat_memory.add_ai_message(response["answer"])
 
-            # عرض الرد مع المراجع والصور
-            display_response_with_references(response, response["answer"])
+                # عرض الرد مع المراجع والصور
+                display_response_with_references(response, response["answer"])
+        except Exception as e:
+            st.error(f"حدث خطأ: {str(e)}")
