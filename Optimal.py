@@ -525,30 +525,37 @@ if human_input:
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
     
     display_chat_message(user_message)
-
-    if "vectors" in st.session_state and st.session_state.vectors is not None:
-        try:
-            response = process_input(
-                human_input,
-                st.session_state.vectors.as_retriever(),
-                llm,
-                st.session_state.memory
-            )
+    
+    try:
+        # تحضير السياق من الملفات PDF
+        context = get_relevant_context(human_input)
+        
+        # إنشاء الإجابة باستخدام OpenAI
+        response = create_chat_response(
+            human_input,
+            context,
+            st.session_state.memory,
+            interface_language
+        )
+        
+        # إضافة الإجابة إلى سجل المحادثة
+        assistant_message = {
+            "role": "assistant",
+            "content": response["answer"],
+            "references": response.get("references", [])
+        }
+        st.session_state.messages.append(assistant_message)
+        st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
+        
+        # عرض الإجابة مع المراجع
+        display_response_with_references(response, response["answer"])
+        
+        # إذا كانت أول رسالة، قم بإعادة تحميل الواجهة لتحديث العنوان والإجابة معاً
+        if len(st.session_state.messages) == 2:  # رسالة المستخدم + رسالة المساعد
+            st.rerun()
             
-            if response:
-                assistant_message = {
-                    "role": "assistant",
-                    "content": response["answer"],
-                    "references": {"context": response["context"]}
-                }
-                st.session_state.messages.append(assistant_message)
-                st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
-                st.session_state.memory.chat_memory.add_user_message(human_input)
-                st.session_state.memory.chat_memory.add_ai_message(response["answer"])
-
-                display_response_with_references(response, response["answer"])
-        except Exception as e:
-            st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
+    except Exception as e:
+        st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
 
 # معالجة الإدخال الصوتي
 if voice_input:
@@ -563,30 +570,37 @@ if voice_input:
     st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
     
     display_chat_message(user_message)
-
-    if "vectors" in st.session_state and st.session_state.vectors is not None:
-        try:
-            response = process_input(
-                voice_input,
-                st.session_state.vectors.as_retriever(),
-                llm,
-                st.session_state.memory
-            )
+    
+    try:
+        # تحضير السياق من الملفات PDF
+        context = get_relevant_context(voice_input)
+        
+        # إنشاء الإجابة باستخدام OpenAI
+        response = create_chat_response(
+            voice_input,
+            context,
+            st.session_state.memory,
+            interface_language
+        )
+        
+        # إضافة الإجابة إلى سجل المحادثة
+        assistant_message = {
+            "role": "assistant",
+            "content": response["answer"],
+            "references": response.get("references", [])
+        }
+        st.session_state.messages.append(assistant_message)
+        st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
+        
+        # عرض الإجابة مع المراجع
+        display_response_with_references(response, response["answer"])
+        
+        # إذا كانت أول رسالة، قم بإعادة تحميل الواجهة لتحديث العنوان والإجابة معاً
+        if len(st.session_state.messages) == 2:  # رسالة المستخدم + رسالة المساعد
+            st.rerun()
             
-            if response:
-                assistant_message = {
-                    "role": "assistant",
-                    "content": response["answer"],
-                    "references": {"context": response["context"]}
-                }
-                st.session_state.messages.append(assistant_message)
-                st.session_state.chat_history[st.session_state.current_chat_id]['messages'] = st.session_state.messages
-                st.session_state.memory.chat_memory.add_user_message(voice_input)
-                st.session_state.memory.chat_memory.add_ai_message(response["answer"])
-
-                display_response_with_references(response, response["answer"])
-        except Exception as e:
-            st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
+    except Exception as e:
+        st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
 
 # Create new chat if no chat is selected
 if st.session_state.current_chat_id is None:
