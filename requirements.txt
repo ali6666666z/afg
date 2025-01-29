@@ -12,5 +12,3 @@ pypdf
 pymupdf
 pdfplumber
 streamlit-mic-recorder
-firebase-admin
-google-cloud-storage
