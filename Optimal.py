@@ -356,8 +356,8 @@ def extract_complete_sentences(text, max_length=200):
 def create_stuff_documents_chain(llm, prompt):
     """إنشاء سلسلة معالجة المستندات مع تحسين جودة السياق"""
     # تحديث نموذج المطالبة لتحسين جودة الإجابات
-    updated_prompt = ChatPromptTemplate(
-        template="""استخدم المعلومات التالية من المستندات لإجابة السؤال بشكل شامل ودقيق. 
+    updated_prompt = PromptTemplate.from_template(
+        """استخدم المعلومات التالية من المستندات لإجابة السؤال بشكل شامل ودقيق. 
         تأكد من أن إجابتك:
         1. مباشرة ومرتبطة بالسؤال
         2. مدعومة بالمراجع من المستندات
@@ -370,8 +370,7 @@ def create_stuff_documents_chain(llm, prompt):
         السؤال: {input}
 
         إجابتك يجب أن تكون:
-        """,
-        input_variables=["context", "input"]
+        """
     )
     
     return create_stuff_documents_chain(llm, updated_prompt)
@@ -388,8 +387,8 @@ def get_relevant_context(retriever, query, k=3):
         complete_text = extract_complete_sentences(text)
         if complete_text:
             organized_context.append({
-                "text": complete_text,
-                "page": doc.metadata.get("page", "unknown")
+                "page_content": complete_text,
+                "metadata": {"page": doc.metadata.get("page", "unknown")}
             })
     
     return organized_context
@@ -432,10 +431,10 @@ def display_references(refs):
         # استخراج أرقام الصفحات والنصوص المقتبسة من السياق
         page_info = []
         for doc in refs["context"]:
-            page_number = doc["page"]
+            page_number = doc.metadata.get("page", "unknown")
             if page_number != "unknown" and str(page_number).isdigit():
                 # استخراج النص المقتبس من المستند
-                quoted_text = doc["text"]
+                quoted_text = doc.page_content
                 page_info.append((int(page_number), quoted_text))
 
         # عرض أرقام الصفحات
