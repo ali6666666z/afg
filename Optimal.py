@@ -466,91 +466,54 @@ def process_input(input_text, retriever, llm, memory):
         st.error(f"حدث خطأ أثناء معالجة السؤال: {str(e)}")
         return None
 
-def display_chat_message(message, with_refs=False):
-    with st.chat_message(message["role"]):
-        st.markdown(message["content"])
-        if with_refs and "references" in message:
-            display_references(message["references"])
-
-def display_references(refs):
-    if refs and "context" in refs:
-        # استخراج أرقام الصفحات والنصوص المقتبسة من السياق
-        page_info = []
-        for doc in refs["context"]:
-            page_number = doc.metadata.get("page", "unknown")
-            if page_number != "unknown" and str(page_number).isdigit():
-                # استخراج النص المقتبس من المستند
-                quoted_text = doc.page_content
-                page_info.append((int(page_number), quoted_text))
-
-        # عرض أرقام الصفحات
-        if page_info:
-            sorted_pages = sorted(list(set(page_num for page_num, _ in page_info)))
-            page_numbers_str = ", ".join(map(str, sorted_pages))
-            st.markdown("---")
-            st.markdown(
-                f"**{'المصدر' if interface_language == 'العربية' else 'Source'}:** " +
-                f"{'صفحة رقم' if interface_language == 'العربية' else 'Page'} {page_numbers_str}"
-            )
-
-            # إنشاء عمودين لعرض الصور
-            cols = st.columns(2)  # عمودان فقط
+def display_response_with_references(response_data):
+    """عرض الإجابة مع المراجع والصور"""
+    if response_data:
+        # عرض الإجابة
+        st.write(response_data["answer"])
+        
+        # عرض الصور والصفحات
+        if "context" in response_data and response_data["context"]:
+            st.markdown("### الصور المرجعية")
             
-            # التقاط وعرض لقطات الشاشة للصفحات ذات الصلة
-            for idx, (page_num, quoted_text) in enumerate(page_info):
-                col_idx = idx % 2  # تحديد رقم العمود (0 أو 1)
-                with cols[col_idx]:
-                    screenshots = pdf_searcher.capture_screenshots(pdf_path, [(page_num, quoted_text)])
-                    if screenshots:
-                        # عرض الصورة مع النص المميز
-                        st.image(
-                            screenshots[0],
-                            use_container_width=True,
-                            width=300
-                        )
-                        # عرض رقم الصفحة والنص المقتبس
-                        st.markdown(
-                            f"<div style='text-align: center;'>"
-                            f"<p><strong>{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}</strong></p>"
-                            f"<p><em>{quoted_text}</em></p>"
-                            f"</div>",
-                            unsafe_allow_html=True
-                        )
-
-def display_response_with_references(response, assistant_response):
-    if not any(phrase in assistant_response for phrase in negative_phrases):
-        # إضافة المراجع إلى الرسالة
-        message = {
-            "role": "assistant",
-            "content": assistant_response,
-            "references": response
-        }
-        display_chat_message(message, with_refs=True)
-    else:
-        # إذا كان الرد يحتوي على عبارات سلبية، نعرض الرد فقط
-        display_chat_message({
-            "role": "assistant",
-            "content": assistant_response
-        })
+            # تجميع الصور والصفحات
+            images_data = []
+            for doc in response_data["context"]:
+                page_num = doc.metadata.get("page", "غير معروف")
+                try:
+                    # التقاط لقطة من الصفحة
+                    image = pdf_searcher.capture_screenshots(pdf_path, [(page_num, doc.page_content)])[0]
+                    if image:
+                        images_data.append((image, page_num))
+                except Exception as e:
+                    st.error(f"خطأ في معالجة الصفحة {page_num}: {str(e)}")
+            
+            # عرض الصور في شبكة
+            if images_data:
+                cols = st.columns(2)  # عرض صورتين في كل صف
+                for idx, (image, page_num) in enumerate(images_data):
+                    with cols[idx % 2]:
+                        st.image(image)
+                        st.markdown(f"**صفحة {page_num}**", help="رقم الصفحة في المستند")
 
 # عرض سجل المحادثة
 for message in st.session_state.messages:
     if message["role"] == "assistant" and "references" in message:
-        display_chat_message(message, with_refs=True)
+        display_response_with_references(message["references"])
     else:
-        display_chat_message(message)
+        st.write(message["content"])
 
 # حقل إدخال النص
 if interface_language == "العربية":
-    human_input = st.chat_input("اكتب سؤالك هنا...")
+    human_input = st.text_input("اكتب سؤالك هنا...")
 else:
-    human_input = st.chat_input("Type your question here...")
+    human_input = st.text_input("Type your question here...")
 
 # معالجة الإدخال النصي
 if human_input:
     user_message = {"role": "user", "content": human_input}
     st.session_state.messages.append(user_message)
-    display_chat_message(user_message)
+    st.write(user_message["content"])
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         try:
@@ -566,14 +529,14 @@ if human_input:
                 assistant_message = {
                     "role": "assistant",
                     "content": response["answer"],
-                    "references": {"context": response["context"]}
+                    "references": response
                 }
                 st.session_state.messages.append(assistant_message)
                 st.session_state.memory.chat_memory.add_user_message(human_input)
                 st.session_state.memory.chat_memory.add_ai_message(response["answer"])
 
                 # عرض الرد مع المراجع والصور
-                display_response_with_references(response, response["answer"])
+                display_response_with_references(response)
         except Exception as e:
             st.error(f"حدث خطأ: {str(e)}")
 
@@ -581,7 +544,7 @@ if human_input:
 if voice_input:
     user_message = {"role": "user", "content": voice_input}
     st.session_state.messages.append(user_message)
-    display_chat_message(user_message)
+    st.write(user_message["content"])
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
         try:
@@ -596,13 +559,13 @@ if voice_input:
                 assistant_message = {
                     "role": "assistant",
                     "content": response["answer"],
-                    "references": {"context": response["context"]}
+                    "references": response
                 }
                 st.session_state.messages.append(assistant_message)
                 st.session_state.memory.chat_memory.add_user_message(voice_input)
                 st.session_state.memory.chat_memory.add_ai_message(response["answer"])
 
                 # عرض الرد مع المراجع والصور
-                display_response_with_references(response, response["answer"])
+                display_response_with_references(response)
         except Exception as e:
             st.error(f"حدث خطأ: {str(e)}")
