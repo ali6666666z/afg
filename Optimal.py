@@ -258,46 +258,32 @@ def load_chat(chat_id):
 
 def format_chat_title(chat):
     """تنسيق عنوان المحادثة"""
-    timestamp = chat['timestamp']
+    # استخدام الموضوع إذا كان موجوداً، وإلا استخدام أول رسالة
+    display_text = chat['first_message']
+    if display_text:
+        display_text = display_text[:50] + '...' if len(display_text) > 50 else display_text
+    else:
+        display_text = UI_TEXTS[interface_language]['new_chat']
+    return display_text
+
+def format_chat_date(timestamp):
+    """تنسيق تاريخ المحادثة"""
     today = datetime.now().date()
     chat_date = timestamp.date()
     
     if chat_date == today:
-        date_str = UI_TEXTS[interface_language]['today']
+        return UI_TEXTS[interface_language]['today']
     elif chat_date == today - timedelta(days=1):
-        date_str = UI_TEXTS[interface_language]['yesterday']
+        return UI_TEXTS[interface_language]['yesterday']
     else:
-        date_str = timestamp.strftime('%Y-%m-%d')
-    
-    time_str = timestamp.strftime('%H:%M')
-    
-    # استخدام الموضوع إذا كان موجوداً، وإلا استخدام أول رسالة
-    display_text = chat['topic'] if chat['topic'] else chat['first_message']
-    if display_text:
-        display_text = display_text[:30] + '...' if len(display_text) > 30 else display_text
-    else:
-        display_text = UI_TEXTS[interface_language]['new_chat']
-    
-    return f"{date_str} {time_str} - {display_text}"
-
-def update_chat_topic(message):
-    """تحديث موضوع المحادثة بناءً على أول رسالة"""
-    chat_id = st.session_state.current_chat_id
-    if chat_id and not st.session_state.chat_history[chat_id]['topic']:
-        # تنظيف وتلخيص الرسالة
-        topic = message.strip()
-        topic = topic.replace('\n', ' ').replace('\r', '')
-        # اقتطاع الموضوع إلى جملة قصيرة
-        if len(topic) > 50:
-            topic = topic[:47] + "..."
-        st.session_state.chat_history[chat_id]['topic'] = topic
+        return timestamp.strftime('%Y-%m-%d')
 
 # Sidebar for chat history
 with st.sidebar:
     # New Chat button
     if st.button(UI_TEXTS[interface_language]['new_chat'], use_container_width=True):
         create_new_chat()
-        st.rerun()  # استخدام st.rerun بدلاً من experimental_rerun
+        st.rerun()
     
     st.markdown("---")
     
@@ -315,6 +301,11 @@ with st.sidebar:
     # Display chats grouped by date
     for date in sorted(chats_by_date.keys(), reverse=True):
         chats = chats_by_date[date]
+        
+        # عرض التاريخ كعنوان
+        st.markdown(f"#### {format_chat_date(chats[0][1]['timestamp'])}")
+        
+        # عرض المحادثات تحت كل تاريخ
         for chat_id, chat_data in sorted(chats, key=lambda x: x[1]['timestamp'], reverse=True):
             if st.sidebar.button(
                 format_chat_title(chat_data),
@@ -322,10 +313,6 @@ with st.sidebar:
                 use_container_width=True
             ):
                 load_chat(chat_id)
-
-# Create new chat if no chat is selected
-if st.session_state.current_chat_id is None:
-    create_new_chat()
 
 # Initialize memory if not already done
 if "memory" not in st.session_state:
@@ -594,3 +581,7 @@ if voice_input:
                 display_response_with_references(response, response["answer"])
         except Exception as e:
             st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
+
+# Create new chat if no chat is selected
+if st.session_state.current_chat_id is None:
+    create_new_chat()
