@@ -174,11 +174,11 @@ with st.sidebar:
                 input_variables=["context", "input"]
             )
 
-        def create_stuff_documents_chain(llm, prompt):
-            """إنشاء سلسلة معالجة المستندات مع تحسين جودة السياق"""
+        def create_custom_chain(llm, prompt):
+            """إنشاء سلسلة معالجة المستندات"""
             return create_stuff_documents_chain(
                 llm=llm,
-                prompt=create_chat_prompt()
+                prompt=prompt
             )
 
         # Load existing embeddings from files
@@ -349,14 +349,38 @@ def extract_complete_sentences(text, max_length=200):
             
     return ' '.join(complete_text)
 
+def get_relevant_context(retriever, query, k=3):
+    """الحصول على السياق الأكثر صلة وتنظيمه"""
+    # استرجاع المستندات ذات الصلة
+    docs = retriever.get_relevant_documents(query)
+    
+    # تنظيم وتنقية السياق
+    organized_context = []
+    for doc in docs[:k]:  # استخدام أفضل k مستندات فقط
+        text = clean_text(doc.page_content)
+        complete_text = extract_complete_sentences(text)
+        if complete_text:
+            # إنشاء وثيقة جديدة مع النص المنظم
+            organized_doc = Document(
+                page_content=complete_text,
+                metadata={"page": doc.metadata.get("page", "unknown")}
+            )
+            organized_context.append(organized_doc)
+    
+    return organized_context
+
 def process_input(input_text, retriever, llm, memory):
     """معالجة إدخال المستخدم مع تحسين جودة الإجابات والسياق"""
     try:
         # الحصول على السياق المنظم
         context = get_relevant_context(retriever, input_text)
         
-        # إنشاء سلسلة المعالجة
-        chain = create_retrieval_chain(retriever, create_stuff_documents_chain(llm, create_chat_prompt()))
+        # إنشاء القالب والسلسلة
+        prompt = create_chat_prompt()
+        chain = create_retrieval_chain(
+            retriever=retriever,
+            combine_docs_chain=create_custom_chain(llm, prompt)
+        )
         
         # الحصول على الإجابة
         response = chain.invoke({
@@ -516,23 +540,3 @@ if voice_input:
                 display_response_with_references(response, response["answer"])
         except Exception as e:
             st.error(f"حدث خطأ: {str(e)}")
-
-def get_relevant_context(retriever, query, k=3):
-    """الحصول على السياق الأكثر صلة وتنظيمه"""
-    # استرجاع المستندات ذات الصلة
-    docs = retriever.get_relevant_documents(query)
-    
-    # تنظيم وتنقية السياق
-    organized_context = []
-    for doc in docs[:k]:  # استخدام أفضل k مستندات فقط
-        text = clean_text(doc.page_content)
-        complete_text = extract_complete_sentences(text)
-        if complete_text:
-            # إنشاء وثيقة جديدة مع النص المنظم
-            organized_doc = Document(
-                page_content=complete_text,
-                metadata={"page": doc.metadata.get("page", "unknown")}
-            )
-            organized_context.append(organized_doc)
-    
-    return organized_context
