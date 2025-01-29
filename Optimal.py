@@ -1,19 +1,26 @@
+# تهيئة المتغيرات الأساسية
 import streamlit as st
 import os
-from langchain_groq import ChatGroq
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain.chains import create_retrieval_chain
-from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain.memory import ConversationBufferMemory
-from streamlit_mic_recorder import speech_to_text  # Import speech-to-text function
-import fitz  # PyMuPDF for capturing screenshots
-import pdfplumber  # For searching text in PDF
+from importlib import import_module
+from langchain.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain.chat_models import ChatGroq
+from langchain.embeddings import GoogleGenerativeAIEmbeddings
+from langchain.vectorstores.faiss import FAISS
+from streamlit_mic_recorder import speech_to_text
 
-# Initialize API key variables
+# تهيئة مفاتيح API
 groq_api_key = "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"
 google_api_key = "AIzaSyDdAiOdIa2I28sphYw36Genb4D--2IN1tU"
+
+# تهيئة حالة الجلسة
+if "interface_language" not in st.session_state:
+    st.session_state.interface_language = "English"
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "memory" not in st.session_state:
+    st.session_state.memory = None
 
 # تحديث إعدادات الصفحة
 st.set_page_config(
@@ -126,16 +133,16 @@ def render_sidebar():
         
         # قسم اللغة
         st.markdown('<div class="info-card">', unsafe_allow_html=True)
-        interface_language = st.selectbox(
+        st.session_state.interface_language = st.selectbox(
             "Language | اللغة",
             ["English", "العربية"],
-            index=0 if interface_language == "English" else 1
+            index=0 if st.session_state.interface_language == "English" else 1
         )
         st.markdown('</div>', unsafe_allow_html=True)
         
         # قسم الإعدادات
         st.markdown('<div class="info-card">', unsafe_allow_html=True)
-        if interface_language == "العربية":
+        if st.session_state.interface_language == "العربية":
             st.markdown("### الإعدادات")
         else:
             st.markdown("### Settings")
@@ -260,7 +267,7 @@ if groq_api_key and google_api_key:
 
     # Load existing embeddings from files
     if "vectors" not in st.session_state:
-        with st.spinner("جارٍ تحميل التضميدات... الرجاء الانتظار." if interface_language == "العربية" else "Loading embeddings... Please wait."):
+        with st.spinner("جارٍ تحميل التضميدات... الرجاء الانتظار." if st.session_state.interface_language == "العربية" else "Loading embeddings... Please wait."):
             # Initialize embeddings
             embeddings = GoogleGenerativeAIEmbeddings(
                 model="models/embedding-001"
@@ -275,29 +282,29 @@ if groq_api_key and google_api_key:
                     allow_dangerous_deserialization=True  # Only use if you trust the source of the embeddings
                 )
             except Exception as e:
-                st.error(f"حدث خطأ أثناء تحميل التضميدات: {str(e)}" if interface_language == "العربية" else f"Error loading embeddings: {str(e)}")
+                st.error(f"حدث خطأ أثناء تحميل التضميدات: {str(e)}" if st.session_state.interface_language == "العربية" else f"Error loading embeddings: {str(e)}")
                 st.session_state.vectors = None
 
     # Microphone button in the sidebar
-    st.markdown("### الإدخال الصوتي" if interface_language == "العربية" else "### Voice Input")
-    input_lang_code = "ar" if interface_language == "العربية" else "en"  # Set language code based on interface language
+    st.markdown("### الإدخال الصوتي" if st.session_state.interface_language == "العربية" else "### Voice Input")
+    input_lang_code = "ar" if st.session_state.interface_language == "العربية" else "en"
     voice_input = speech_to_text(
         start_prompt="🎤",
-        stop_prompt="⏹️ إيقاف" if interface_language == "العربية" else "⏹️ Stop",
-        language=input_lang_code,  # Language (en for English, ar for Arabic)
+        stop_prompt="⏹️ إيقاف" if st.session_state.interface_language == "العربية" else "⏹️ Stop",
+        language=input_lang_code,
         use_container_width=True,
         just_once=True,
         key="mic_button",
     )
 
     # Reset button in the sidebar
-    if st.button("إعادة تعيين الدردشة" if interface_language == "العربية" else "Reset Chat"):
+    if st.button("إعادة تعيين الدردشة" if st.session_state.interface_language == "العربية" else "Reset Chat"):
         st.session_state.messages = []  # Clear chat history
         st.session_state.memory.clear()  # Clear memory
-        st.success("تمت إعادة تعيين الدردشة بنجاح." if interface_language == "العربية" else "Chat has been reset successfully.")
+        st.success("تمت إعادة تعيين الدردشة بنجاح." if st.session_state.interface_language == "العربية" else "Chat has been reset successfully.")
         st.rerun()  # Rerun the app to reflect changes immediately
 else:
-    st.error("الرجاء إدخال مفاتيح API للمتابعة." if interface_language == "العربية" else "Please enter both API keys to proceed.")
+    st.error("الرجاء إدخال مفاتيح API للمتابعة." if st.session_state.interface_language == "العربية" else "Please enter both API keys to proceed.")
 
 # Initialize session state for chat messages if not already done
 if "messages" not in st.session_state:
@@ -305,10 +312,7 @@ if "messages" not in st.session_state:
 
 # Initialize memory if not already done
 if "memory" not in st.session_state:
-    st.session_state.memory = ConversationBufferMemory(
-        memory_key="history",
-        return_messages=True
-    )
+    st.session_state.memory = None
 
 # List of negative phrases to check for unclear or insufficient answers
 negative_phrases = [
@@ -350,10 +354,10 @@ negative_phrases = [
     "Incorrect",
     "غير مناسب",
     "Inappropriate",
-    "Please provide me",  # إضافة هذه العبارة
-    "يرجى تزويدي",  # إضافة هذه العبارة
-    "Can you provide more",  # إضافة هذه العبارة
-    "هل يمكنك تقديم المزيد"  # إضافة هذه العبارة
+    "Please provide me",
+    "يرجى تزويدي",
+    "Can you provide more",
+    "هل يمكنك تقديم المزيد"
 ]
 
 # Function to display response with references and screenshots
@@ -379,8 +383,8 @@ def display_response_with_references(response, assistant_response):
                     sorted_pages = sorted(page_numbers)
                     page_numbers_str = ", ".join(map(str, sorted_pages))
                     st.markdown(
-                        f"**{'المصدر' if interface_language == 'العربية' else 'Source'}:** " +
-                        f"{'صفحة رقم' if interface_language == 'العربية' else 'Page'} {page_numbers_str}"
+                        f"**{'المصدر' if st.session_state.interface_language == 'العربية' else 'Source'}:** " +
+                        f"{'صفحة رقم' if st.session_state.interface_language == 'العربية' else 'Page'} {page_numbers_str}"
                     )
 
                     # التقاط وعرض لقطات الشاشة للصفحات ذات الصلة
@@ -397,7 +401,7 @@ def display_response_with_references(response, assistant_response):
                             with cols[idx % 2]:
                                 st.image(
                                     screenshot,
-                                    caption=f"{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}",
+                                    caption=f"{'صفحة' if st.session_state.interface_language == 'العربية' else 'Page'} {page_num}",
                                     use_container_width=True
                                 )
 
@@ -435,7 +439,7 @@ if voice_input:
         st.session_state.memory.chat_memory.add_ai_message(assistant_response)
 
 # Text input field
-if interface_language == "العربية":
+if st.session_state.interface_language == "العربية":
     human_input = st.chat_input("اكتب سؤالك هنا...")
 else:
     human_input = st.chat_input("Type your question here...")
@@ -474,7 +478,7 @@ def main():
     render_sidebar()
     
     # عرض المحتوى الرئيسي
-    if not st.session_state.is_authenticated:
+    if "is_authenticated" not in st.session_state or not st.session_state.is_authenticated:
         render_auth_interface()
     else:
         # عرض واجهة الدردشة
@@ -487,7 +491,7 @@ def main():
         
         with cols[1]:
             st.markdown('<div class="info-card">', unsafe_allow_html=True)
-            if interface_language == "العربية":
+            if st.session_state.interface_language == "العربية":
                 st.markdown("### معلومات سريعة")
                 st.markdown("- اطرح أسئلتك باللغة العربية أو الإنجليزية")
                 st.markdown("- استخدم الميكروفون للإدخال الصوتي")
