@@ -283,13 +283,27 @@ def display_response_with_references(response, assistant_response):
                         f"{'صفحة رقم' if interface_language == 'العربية' else 'Page'} {page_numbers_str}"
                     )
 
+                    # Create columns to display images
+                    cols = st.columns(min(3, len(sorted_pages)))  # Display up to 3 images per row
+                    
                     # Capture and display screenshots of the relevant pages
-                    for page_num in sorted_pages:
-                        highlighted_pages = [(page_num, "")]
-                        screenshots = pdf_searcher.capture_screenshots(pdf_path, highlighted_pages)
-                        if screenshots:
-                            st.markdown(f"**{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}:**")
-                            st.image(screenshots[0], use_column_width=True)
+                    for idx, page_num in enumerate(sorted_pages):
+                        col_idx = idx % 3  # Determine column index
+                        with cols[col_idx]:
+                            highlighted_pages = [(page_num, "")]
+                            screenshots = pdf_searcher.capture_screenshots(pdf_path, highlighted_pages)
+                            if screenshots:
+                                # Display the image with a smaller size
+                                st.image(
+                                    screenshots[0],
+                                    use_container_width=True,
+                                    width=250  # Set a fixed width for the image
+                                )
+                                # Display the page number below the image
+                                st.markdown(
+                                    f"<div style='text-align: center;'><p><strong>{'صفحة' if interface_language == 'العربية' else 'Page'} {page_num}</strong></p></div>",
+                                    unsafe_allow_html=True
+                                )
 
 # حقل إدخال النص
 if interface_language == "العربية":
