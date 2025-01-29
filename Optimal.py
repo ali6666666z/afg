@@ -1,13 +1,12 @@
 import streamlit as st
-import os
 from langchain_groq import ChatGroq
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain.chains import create_retrieval_chain
+from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import Document
+from langchain.prompts import PromptTemplate
 from streamlit_mic_recorder import speech_to_text  # Import speech-to-text function
 import fitz  # PyMuPDF for capturing screenshots
 import pdfplumber  # For searching text in PDF
@@ -151,40 +150,35 @@ with st.sidebar:
         # Initialize ChatGroq with the provided Groq API key
         llm = ChatGroq(groq_api_key=groq_api_key, model_name="gemma2-9b-it")
 
-        # Define the chat prompt template with memory
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", """
-            You are a helpful assistant for Basrah Gas Company (BGC). Your task is to answer questions based on the provided context about BGC. Follow these rules strictly:
+        # تعريف القالب الأساسي للدردشة
+        def create_chat_prompt():
+            return PromptTemplate(
+                template="""أنت مساعد مفيد لشركة غاز البصرة (BGC). مهمتك هي الإجابة على الأسئلة بناءً على السياق المقدم حول BGC. اتبع هذه القواعد بدقة:
 
-            1. **Language Handling:**
-               - If the question is in English, answer in English.
-               - If the question is in Arabic, answer in Arabic.
-               - If the user explicitly asks for a response in a specific language, respond in that language.
+                1. قدم إجابات دقيقة ومباشرة
+                2. استخدم فقط المعلومات من السياق المقدم
+                3. إذا لم تكن متأكداً، قل ذلك بصراحة
+                4. حافظ على لغة مهنية ومحترفة
 
-            2. **Contextual Answers:**
-               - Provide accurate and concise answers based on the context provided.
-               - Do not explicitly mention the source of information unless asked.
+                السياق المقدم:
+                {context}
 
-            3. **Handling Unclear or Unanswerable Questions:**
-               - If the question is unclear or lacks sufficient context, respond with:
-                 - In English: "I'm sorry, I couldn't understand your question. Could you please provide more details?"
-                 - In Arabic: "عذرًا، لم أتمكن من فهم سؤالك. هل يمكنك تقديم المزيد من التفاصيل؟"
-               - If the question cannot be answered based on the provided context, respond with:
-                 - In English: "I'm sorry, I don't have enough information to answer that question."
-                 - In Arabic: "عذرًا، لا أملك معلومات كافية للإجابة على هذا السؤال."
+                السؤال: {input}
 
-            4. **User Interface Language:**
-               - If the user has selected Arabic as the interface language, prioritize Arabic in your responses unless the question is explicitly in English.
-               - If the user has selected English as the interface language, prioritize English in your responses unless the question is explicitly in Arabic.
+                تذكر أن تقدم إجابة:
+                1. دقيقة ومستندة إلى الوثائق
+                2. مباشرة وواضحة
+                3. مهنية ومنظمة
+                """,
+                input_variables=["context", "input"]
+            )
 
-            5. **Professional Tone:**
-               - Maintain a professional and respectful tone in all responses.
-               - Avoid making assumptions or providing speculative answers.
-            """),
-            MessagesPlaceholder(variable_name="history"),  # Add chat history to the prompt
-            ("human", "{input}"),
-            ("system", "Context: {context}"),
-        ])
+        def create_stuff_documents_chain(llm, prompt):
+            """إنشاء سلسلة معالجة المستندات مع تحسين جودة السياق"""
+            return create_stuff_documents_chain(
+                llm=llm,
+                prompt=create_chat_prompt()
+            )
 
         # Load existing embeddings from files
         if "vectors" not in st.session_state:
@@ -354,48 +348,6 @@ def extract_complete_sentences(text, max_length=200):
             
     return ' '.join(complete_text)
 
-def create_stuff_documents_chain(llm, prompt):
-    """إنشاء سلسلة معالجة المستندات مع تحسين جودة السياق"""
-    # تحديث نموذج المطالبة لتحسين جودة الإجابات
-    updated_prompt = PromptTemplate.from_template(
-        """استخدم المعلومات التالية من المستندات لإجابة السؤال بشكل شامل ودقيق. 
-        تأكد من أن إجابتك:
-        1. مباشرة ومرتبطة بالسؤال
-        2. مدعومة بالمراجع من المستندات
-        3. منظمة بشكل منطقي
-        4. تستخدم لغة واضحة ومهنية
-
-        المستندات:
-        {context}
-
-        السؤال: {input}
-
-        إجابتك يجب أن تكون:
-        """
-    )
-    
-    return create_stuff_documents_chain(llm, updated_prompt)
-
-def get_relevant_context(retriever, query, k=3):
-    """الحصول على السياق الأكثر صلة وتنظيمه"""
-    # استرجاع المستندات ذات الصلة
-    docs = retriever.get_relevant_documents(query)
-    
-    # تنظيم وتنقية السياق
-    organized_context = []
-    for doc in docs[:k]:  # استخدام أفضل k مستندات فقط
-        text = clean_text(doc.page_content)
-        complete_text = extract_complete_sentences(text)
-        if complete_text:
-            # إنشاء وثيقة جديدة مع النص المنظم
-            organized_doc = Document(
-                page_content=complete_text,
-                metadata={"page": doc.metadata.get("page", "unknown")}
-            )
-            organized_context.append(organized_doc)
-    
-    return organized_context
-
 def process_input(input_text, retriever, llm, memory):
     """معالجة إدخال المستخدم مع تحسين جودة الإجابات والسياق"""
     try:
@@ -403,7 +355,7 @@ def process_input(input_text, retriever, llm, memory):
         context = get_relevant_context(retriever, input_text)
         
         # إنشاء سلسلة المعالجة
-        chain = create_retrieval_chain(retriever, create_stuff_documents_chain(llm, prompt))
+        chain = create_retrieval_chain(retriever, create_stuff_documents_chain(llm, create_chat_prompt()))
         
         # الحصول على الإجابة
         response = chain.invoke({
@@ -563,3 +515,23 @@ if voice_input:
                 display_response_with_references(response, response["answer"])
         except Exception as e:
             st.error(f"حدث خطأ: {str(e)}")
+
+def get_relevant_context(retriever, query, k=3):
+    """الحصول على السياق الأكثر صلة وتنظيمه"""
+    # استرجاع المستندات ذات الصلة
+    docs = retriever.get_relevant_documents(query)
+    
+    # تنظيم وتنقية السياق
+    organized_context = []
+    for doc in docs[:k]:  # استخدام أفضل k مستندات فقط
+        text = clean_text(doc.page_content)
+        complete_text = extract_complete_sentences(text)
+        if complete_text:
+            # إنشاء وثيقة جديدة مع النص المنظم
+            organized_doc = Document(
+                page_content=complete_text,
+                metadata={"page": doc.metadata.get("page", "unknown")}
+            )
+            organized_context.append(organized_doc)
+    
+    return organized_context
