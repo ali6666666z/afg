@@ -23,6 +23,12 @@ if "messages" not in st.session_state:
 if "memory" not in st.session_state:
     st.session_state.memory = ConversationBufferMemory(return_messages=False)
 
+if "is_authenticated" not in st.session_state:
+    st.session_state.is_authenticated = False
+
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = False
+
 # تحديث إعدادات الصفحة
 st.set_page_config(
     page_title="BGC ChatBot",
@@ -121,10 +127,19 @@ st.markdown("""
 def render_main_header():
     st.markdown("""
         <div class="main-header">
-            <h1>POWERING PROGRESS IN IRAQ</h1>
-            <p>Basrah Gas Company ChatBot - Your Intelligent Assistant</p>
+            <div style="text-align: center;">
+                <img src="BGC Logo Colored.svg" style="width: 150px; margin-bottom: 1rem;">
+            </div>
+            <h1 style="text-align: center; color: white;">
+                POWERING PROGRESS IN IRAQ
+            </h1>
+            <p style="text-align: center; color: white; font-size: 1.2rem;">
+                {subtitle}
+            </p>
         </div>
-    """, unsafe_allow_html=True)
+    """.format(
+        subtitle="شركة غاز البصرة - المساعد الذكي" if st.session_state.interface_language == "العربية" else "Basrah Gas Company - Intelligent Assistant"
+    ), unsafe_allow_html=True)
 
 # تحديث واجهة الشريط الجانبي
 def render_sidebar():
@@ -472,6 +487,62 @@ if human_input:
         st.session_state.messages.append({"role": "assistant", "content": assistant_response})
         st.session_state.memory.chat_memory.add_user_message(human_input)
         st.session_state.memory.chat_memory.add_ai_message(assistant_response)
+
+# دالة لعرض واجهة تسجيل الدخول
+def render_auth_interface():
+    st.markdown("""
+        <div class="auth-container">
+            <div class="info-card">
+                <h2 style="text-align: center;">
+                    {title}
+                </h2>
+                <p style="text-align: center;">
+                    {subtitle}
+                </p>
+            </div>
+        </div>
+    """.format(
+        title="تسجيل الدخول" if st.session_state.interface_language == "العربية" else "Login",
+        subtitle="الرجاء تسجيل الدخول للمتابعة" if st.session_state.interface_language == "العربية" else "Please login to continue"
+    ), unsafe_allow_html=True)
+
+    # نموذج تسجيل الدخول
+    with st.form("login_form"):
+        email = st.text_input(
+            "البريد الإلكتروني" if st.session_state.interface_language == "العربية" else "Email",
+            key="email"
+        )
+        password = st.text_input(
+            "كلمة المرور" if st.session_state.interface_language == "العربية" else "Password",
+            type="password",
+            key="password"
+        )
+        
+        # زر تسجيل الدخول
+        submit = st.form_submit_button(
+            "تسجيل الدخول" if st.session_state.interface_language == "العربية" else "Login"
+        )
+        
+        if submit:
+            # هنا يمكنك إضافة منطق التحقق من صحة بيانات تسجيل الدخول
+            # للتجربة، سنقوم بتسجيل الدخول مباشرة
+            st.session_state.is_authenticated = True
+            st.success(
+                "تم تسجيل الدخول بنجاح!" if st.session_state.interface_language == "العربية" else "Successfully logged in!"
+            )
+            st.rerun()
+
+    # رابط إنشاء حساب جديد
+    st.markdown("""
+        <div style="text-align: center; margin-top: 1rem;">
+            <p>
+                {text} <a href="#">{link_text}</a>
+            </p>
+        </div>
+    """.format(
+        text="ليس لديك حساب؟" if st.session_state.interface_language == "العربية" else "Don't have an account?",
+        link_text="إنشاء حساب جديد" if st.session_state.interface_language == "العربية" else "Create new account"
+    ), unsafe_allow_html=True)
 
 # دالة للتحكم في الوضع الداكن
 def toggle_dark_mode():
