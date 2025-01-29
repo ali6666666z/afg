@@ -292,12 +292,12 @@ with st.sidebar:
         # Microphone button in the sidebar
         st.markdown("### الإدخال الصوتي" if interface_language == "العربية" else "### Voice Input")
         input_lang_code = "ar" if interface_language == "العربية" else "en"  # Set language code based on interface language
-        voice_input = mic_recorder(
+        sidebar_voice_input = mic_recorder(
             start_prompt="🎤",
             stop_prompt="⏹️",
             just_once=True,
             use_container_width=True,
-            key="voice_recorder"
+            key="sidebar_voice_recorder"  # مفتاح فريد للشريط الجانبي
         )
 
         # Reset button in the sidebar
@@ -486,12 +486,12 @@ with cols[0]:
     human_input = st.text_input("", placeholder=UI_TEXTS[interface_language]['input_placeholder'], key="chat_input")
 
 with cols[1]:
-    voice_input = mic_recorder(
+    main_voice_input = mic_recorder(
         start_prompt="🎤",
         stop_prompt="⏹️",
         just_once=True,
         use_container_width=True,
-        key="voice_recorder"
+        key="main_voice_recorder"  # مفتاح فريد للمنطقة الرئيسية
     )
 
 st.markdown('</div>', unsafe_allow_html=True)
@@ -719,7 +719,8 @@ if human_input:
         except Exception as e:
             st.error(f"{UI_TEXTS[interface_language]['error_question']}{str(e)}")
 
-# معالجة الإدخال الصوتي بنفس الطريقة
+# معالجة الإدخال الصوتي
+voice_input = sidebar_voice_input or main_voice_input  # دمج الإدخال الصوتي من كلا المصدرين
 if voice_input:
     user_message = {"role": "user", "content": voice_input}
     st.session_state.messages.append(user_message)
