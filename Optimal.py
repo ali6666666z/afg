@@ -318,23 +318,124 @@ negative_phrases = [
     "هل يمكنك تقديم المزيد"  # إضافة هذه العبارة
 ]
 
-# تحديث دالة عرض المحادثة
+def clean_text(text):
+    """تنظيف النص من الأخطاء والفراغات الزائدة"""
+    # إزالة الفراغات الزائدة
+    text = ' '.join(text.split())
+    # إزالة علامات التنسيق غير المرغوبة
+    text = text.replace('\n', ' ').replace('\r', ' ').replace('\t', ' ')
+    return text
+
+def extract_complete_sentences(text, max_length=200):
+    """استخراج جمل كاملة من النص"""
+    # تقسيم النص إلى جمل
+    sentences = text.split('.')
+    complete_text = []
+    current_length = 0
+    
+    for sentence in sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+            
+        # التأكد من أن الجملة تبدأ بحرف كبير وتنتهي بنقطة
+        if sentence[0].isalpha():
+            sentence = sentence[0].upper() + sentence[1:]
+        if not sentence.endswith('.'):
+            sentence += '.'
+            
+        # إضافة الجملة إذا كانت ضمن الحد الأقصى للطول
+        if current_length + len(sentence) <= max_length:
+            complete_text.append(sentence)
+            current_length += len(sentence)
+        else:
+            break
+            
+    return ' '.join(complete_text)
+
+def create_stuff_documents_chain(llm, prompt):
+    """إنشاء سلسلة معالجة المستندات مع تحسين جودة السياق"""
+    # تحديث نموذج المطالبة لتحسين جودة الإجابات
+    updated_prompt = ChatPromptTemplate(
+        template="""استخدم المعلومات التالية من المستندات لإجابة السؤال بشكل شامل ودقيق. 
+        تأكد من أن إجابتك:
+        1. مباشرة ومرتبطة بالسؤال
+        2. مدعومة بالمراجع من المستندات
+        3. منظمة بشكل منطقي
+        4. تستخدم لغة واضحة ومهنية
+
+        المستندات:
+        {context}
+
+        السؤال: {input}
+
+        إجابتك يجب أن تكون:
+        """,
+        input_variables=["context", "input"]
+    )
+    
+    return create_stuff_documents_chain(llm, updated_prompt)
+
+def get_relevant_context(retriever, query, k=3):
+    """الحصول على السياق الأكثر صلة وتنظيمه"""
+    # استرجاع المستندات ذات الصلة
+    docs = retriever.get_relevant_documents(query)
+    
+    # تنظيم وتنقية السياق
+    organized_context = []
+    for doc in docs[:k]:  # استخدام أفضل k مستندات فقط
+        text = clean_text(doc.page_content)
+        complete_text = extract_complete_sentences(text)
+        if complete_text:
+            organized_context.append({
+                "text": complete_text,
+                "page": doc.metadata.get("page", "unknown")
+            })
+    
+    return organized_context
+
+def process_input(input_text, retriever, llm, memory):
+    """معالجة إدخال المستخدم مع تحسين جودة الإجابات والسياق"""
+    try:
+        # الحصول على السياق المنظم
+        context = get_relevant_context(retriever, input_text)
+        
+        # إنشاء سلسلة المعالجة
+        chain = create_retrieval_chain(retriever, create_stuff_documents_chain(llm, prompt))
+        
+        # الحصول على الإجابة
+        response = chain.invoke({
+            "input": input_text,
+            "history": memory.load_memory_variables({})["history"]
+        })
+        
+        # تنظيم الإجابة والسياق
+        organized_response = {
+            "answer": response["answer"],
+            "context": context
+        }
+        
+        return organized_response
+        
+    except Exception as e:
+        st.error(f"حدث خطأ أثناء معالجة السؤال: {str(e)}")
+        return None
+
 def display_chat_message(message, with_refs=False):
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if with_refs and "references" in message:
             display_references(message["references"])
 
-# دالة عرض المراجع والصور
 def display_references(refs):
     if refs and "context" in refs:
         # استخراج أرقام الصفحات والنصوص المقتبسة من السياق
         page_info = []
         for doc in refs["context"]:
-            page_number = doc.metadata.get("page", "unknown")
+            page_number = doc["page"]
             if page_number != "unknown" and str(page_number).isdigit():
                 # استخراج النص المقتبس من المستند
-                quoted_text = doc.page_content
+                quoted_text = doc["text"]
                 page_info.append((int(page_number), quoted_text))
 
         # عرض أرقام الصفحات
@@ -371,7 +472,6 @@ def display_references(refs):
                             unsafe_allow_html=True
                         )
 
-# تحديث دالة عرض الرد مع المراجع
 def display_response_with_references(response, assistant_response):
     if not any(phrase in assistant_response for phrase in negative_phrases):
         # إضافة المراجع إلى الرسالة
@@ -401,34 +501,6 @@ if interface_language == "العربية":
 else:
     human_input = st.chat_input("Type your question here...")
 
-# معالجة الإدخال الصوتي
-if voice_input:
-    user_message = {"role": "user", "content": voice_input}
-    st.session_state.messages.append(user_message)
-    display_chat_message(user_message)
-
-    if "vectors" in st.session_state and st.session_state.vectors is not None:
-        retriever = st.session_state.vectors.as_retriever()
-        chain = create_retrieval_chain(retriever, create_stuff_documents_chain(llm, prompt))
-        response = chain.invoke({
-            "input": voice_input,
-            "history": st.session_state.memory.load_memory_variables({})["history"]
-        })
-        assistant_response = response["answer"]
-
-        # حفظ الرسائل في الذاكرة مع المراجع
-        assistant_message = {
-            "role": "assistant",
-            "content": assistant_response,
-            "references": response
-        }
-        st.session_state.messages.append(assistant_message)
-        st.session_state.memory.chat_memory.add_user_message(voice_input)
-        st.session_state.memory.chat_memory.add_ai_message(assistant_response)
-
-        # عرض الرد مع المراجع والصور
-        display_response_with_references(response, assistant_response)
-
 # معالجة الإدخال النصي
 if human_input:
     user_message = {"role": "user", "content": human_input}
@@ -436,23 +508,50 @@ if human_input:
     display_chat_message(user_message)
 
     if "vectors" in st.session_state and st.session_state.vectors is not None:
-        retriever = st.session_state.vectors.as_retriever()
-        chain = create_retrieval_chain(retriever, create_stuff_documents_chain(llm, prompt))
-        response = chain.invoke({
-            "input": human_input,
-            "history": st.session_state.memory.load_memory_variables({})["history"]
-        })
-        assistant_response = response["answer"]
+        # معالجة الإدخال مع التحسينات الجديدة
+        response = process_input(
+            human_input,
+            st.session_state.vectors.as_retriever(),
+            llm,
+            st.session_state.memory
+        )
+        
+        if response:
+            assistant_message = {
+                "role": "assistant",
+                "content": response["answer"],
+                "references": {"context": response["context"]}
+            }
+            st.session_state.messages.append(assistant_message)
+            st.session_state.memory.chat_memory.add_user_message(human_input)
+            st.session_state.memory.chat_memory.add_ai_message(response["answer"])
 
-        # حفظ الرسائل في الذاكرة مع المراجع
-        assistant_message = {
-            "role": "assistant",
-            "content": assistant_response,
-            "references": response
-        }
-        st.session_state.messages.append(assistant_message)
-        st.session_state.memory.chat_memory.add_user_message(human_input)
-        st.session_state.memory.chat_memory.add_ai_message(assistant_response)
+            # عرض الرد مع المراجع والصور
+            display_response_with_references(response, response["answer"])
 
-        # عرض الرد مع المراجع والصور
-        display_response_with_references(response, assistant_response)
+# معالجة الإدخال الصوتي بنفس الطريقة
+if voice_input:
+    user_message = {"role": "user", "content": voice_input}
+    st.session_state.messages.append(user_message)
+    display_chat_message(user_message)
+
+    if "vectors" in st.session_state and st.session_state.vectors is not None:
+        response = process_input(
+            voice_input,
+            st.session_state.vectors.as_retriever(),
+            llm,
+            st.session_state.memory
+        )
+        
+        if response:
+            assistant_message = {
+                "role": "assistant",
+                "content": response["answer"],
+                "references": {"context": response["context"]}
+            }
+            st.session_state.messages.append(assistant_message)
+            st.session_state.memory.chat_memory.add_user_message(voice_input)
+            st.session_state.memory.chat_memory.add_ai_message(response["answer"])
+
+            # عرض الرد مع المراجع والصور
+            display_response_with_references(response, response["answer"])
